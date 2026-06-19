@@ -1,0 +1,146 @@
+# ==============================================================================
+# pyproject.toml
+# ==============================================================================
+
+[build-system]
+requires = [
+  "scikit-build-core>=0.11.6",
+  "pybind11>=2.11",
+  "setuptools>=45",
+  "wheel",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "crispritz-plus"
+version = "0.1.0"
+description = "CRISPRitz+: High-Throughput and Variant-Aware In Silico Off-Target Sites Identification For CRISPR Genome Editing"
+readme = "README.md"
+authors = [
+  {name = "Pinello Lab", email = "lpinello@mgh.harvard.edu"},
+  {name = "InfOmics Lab", email = "rosalba.giugno@univr.it"}
+]
+maintainers = [
+  {name = "Manuel Tognon", email = "manu.tognon@gmail.com"}
+]
+license = {text = "AGPL-3"}
+keywords = ["CRISPR", "guide RNA", "off-target", "variant", "bioinformatics"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.8"
+dependencies = [
+  "colorama==0.4.6",
+  "pysam==0.22.1",
+  "tqdm==4.67.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "flake8", "mypy"]
+docs = ["sphinx", "sphinx-rtd-theme"]
+
+[project.scripts]
+crispritz-plus = "crispritz_plus.__main__:main"
+
+[project.urls]
+Homepage     = "https://github.com/ManuelTgn/CRISPRitz-plus"
+Documentation = "https://github.com/ManuelTgn/CRISPRitz-plus"
+Repository   = "https://github.com/ManuelTgn/CRISPRitz-plus"
+"Bug Tracker" = "https://github.com/ManuelTgn/CRISPRitz-plus/issues"
+Changelog    = "https://github.com/ManuelTgn/CRISPRitz-plus/blob/main/CHANGELOG.md"
+
+# ------------------------------------------------------------------------------
+# scikit-build-core configuration
+# ------------------------------------------------------------------------------
+[tool.scikit-build]
+# Place build artefacts under build/<wheel_tag> to avoid polluting the tree.
+build-dir = "build/{wheel_tag}"
+
+# Install the compiled extension into the Python package directory inside the wheel.
+wheel.install-dir = "src/crispritz_plus"
+
+# Build the extension module AND all four C++ test executables in one cmake --build pass.
+# crispritz_core (the static library) is built implicitly as a dependency of all five.
+build.targets = [
+    "_ternary_search_tree",
+    "test_nucleotide_encoding",
+    "test_pam_search",
+    "test_profile_data",
+    "test_tst_utils",
+    "test_tst",
+    "test_offtarget", 
+    "test_output_writer",
+    "test_search_configuration",
+    "test_tst_search",
+]
+
+[tool.scikit-build.cmake]
+version = ">=3.19"
+
+# Pass -DBUILD_TESTING=ON so the if(BUILD_TESTING) block in CMakeLists.txt is
+# activated, and run CTest immediately after the build succeeds.
+# --output-on-failure prints the full test output only when a test fails,
+# keeping normal installs quiet while making CI logs useful on regressions.
+args = [
+    "-DBUILD_TESTING=ON",
+]
+
+# ------------------------------------------------------------------------------
+# CTest integration
+# scikit-build-core >= 0.10 supports [tool.ctest] to run ctest automatically
+# after cmake --build as part of `pip install` / `python -m build`.
+# The tests run in the cmake build directory where the executables were compiled.
+# ------------------------------------------------------------------------------
+[tool.ctest]
+output-on-failure = true
+# Stop immediately on the first failing test to surface errors quickly.
+stop-on-failure   = true
+# Parallelise: run all seven test executables concurrently.
+parallel          = 7
+
+# ------------------------------------------------------------------------------
+# dev tooling
+# ------------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+python_files = "test_*.py"
+addopts      = "-v --tb=short"
+
+[tool.black]
+line-length    = 88
+target-version = ['py38']
+
+[tool.isort]
+profile          = "black"
+line_length      = 88
+known_first_party = ["crispritz_plus"]
+
+[tool.mypy]
+python_version      = "3.8"
+warn_return_any     = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore   = ["E203", "W503"]
+exclude         = [".git", "__pycache__", "build", "dist", "*.egg-info"]
+
+[tool.coverage.run]
+source = ["src/crispritz_plus"]
+omit   = ["*/tests/*", "*/test_*"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError"
+]

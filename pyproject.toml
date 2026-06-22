@@ -72,12 +72,14 @@ build.targets = [
     "test_nucleotide_encoding",
     "test_pam_search",
     "test_profile_data",
+    "test_profile_merger",
+    "test_result_merger",
+    "test_search_configuration",
     "test_search_executor",
     "test_tst_utils",
     "test_tst",
     "test_offtarget", 
     "test_output_writer",
-    "test_search_configuration",
     "test_tst_search",
 ]
 

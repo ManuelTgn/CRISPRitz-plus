@@ -104,4 +104,4 @@ def write_merged_profiles_cpp(
     profiles_by_partition_native = [
         [profile.native for profile in partition] for partition in profiles_by_partition
     ]
-    return tst.write_merged_profiles(profiles_by_partition, path_stem)
+    return tst.write_merged_profiles(profiles_by_partition_native, path_stem)

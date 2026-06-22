@@ -1,18 +1,46 @@
+/**
+ * @file bindings.cpp
+ * @brief pybind11 surface for the CRISPRitz-plus C++ core.
+ *
+ * The boundary is deliberately narrow and matches the streaming pipeline: the
+ * heavy data (off-target rows) never crosses into Python — it is written to
+ * per-partition shard files by the C++ executor, scored in place by Python,
+ * then merged back by C++. Only configuration, small profile structs, and file
+ * paths cross.
+ *
+ *   Python owns: partition-level parallelism (ThreadPoolExecutor over
+ *   run_search_executor), per-shard CFD scoring (ProcessPoolExecutor), and the
+ *   run loop.
+ *   C++ owns: load + search + streaming shard writes (run_search_executor),
+ *   per-shard sort + k-way merge (merge_sorted_shards), and profile
+ *   accumulation + writing (write_merged_profiles).
+ *
+ * Every long-running entry releases the GIL via py::call_guard so the Python
+ * thread pool achieves true C++ parallelism.
+ */
+
 #include "nucleotide_encoding.hpp"
-#include "pam_search.hpp"
-#include "tst.hpp"
+#include "profile_data.hpp"         // GuideProfile
+#include "profile_merger.hpp"       // write_merged_profiles
+#include "result_merger.hpp"        // SortMode, merge_sorted_shards
+#include "search_configuration.hpp" // SearchConfiguration, OutputFormat/Mode
+#include "search_executor.hpp"      // run_search_executor, PartitionResult
+#include "tst.hpp"                  // build_tree
 
 #include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
+#include <pybind11/stl.h> // std::string / std::vector auto-conversion
+
 #include <stdexcept>
+#include <string>
 
 namespace py = pybind11;
+using namespace crispritz;
 
 PYBIND11_MODULE(_ternary_search_tree, m) {
-  m.doc() = "CRISPRitz C++ API bindings (pybind11)";
+  m.doc() = "CRISPRitz-plus C++ API bindings (pybind11): TST index "
+            "construction and the streaming per-partition search pipeline.";
 
-  // Map C++ runtime errors to Python RuntimeError so callers get a
-  // descriptive exception instead of a hard crash.
+  // C++ runtime/argument errors -> descriptive Python exceptions.
   py::register_exception<std::runtime_error>(m, "TSTBuildError");
   py::register_exception<std::invalid_argument>(m, "TSTSearchError");
 
@@ -23,35 +51,119 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
         py::arg("chr_name"), py::arg("pam_seq"), py::arg("pam_length"),
         py::arg("pam_limit"), py::arg("upstream"), py::arg("outdir"),
         py::arg("max_bulges") = 0, py::arg("num_threads") = 1,
-        R"doc(
-Build a Ternary Search Tree index for a single genomic sequence.
+        "Build a Ternary Search Tree index for one genomic sequence and write "
+        "the .bin partition(s) to outdir.");
 
-Parameters
-----------
-sequence : str
-    Full genomic sequence (single chromosome, uppercase IUPAC).
-chr_name : str
-    Chromosome / contig identifier used in output filename(s).
-pam_seq : str
-    PAM-only string (e.g. ``"NGG"``), without guide placeholder Ns.
-pam_length : int
-    Total length of the PAM+guide pattern
-    (e.g. 23 for ``NNNNNNNNNNNNNNNNNNNNNGG``).
-pam_limit : int
-    Length of the PAM portion only (e.g. 3 for ``NGG``).
-upstream : bool
-    True when the PAM precedes the guide (PAM-upstream, e.g. Cas12a ``TTTN``).
-outdir : str
-    Path to the directory where the genome index will be stored.
-max_bulges : int, optional
-    Maximum number of bulges; extra bases are extracted per site to support
-    bulge-aware off-target search. Default 0.
-num_threads : int, optional
-    Number of OpenMP threads used during PAM search. Default 1.
+  // =========================================================================
+  // Enums + string helpers
+  // =========================================================================
+  py::enum_<OutputFormat>(m, "OutputFormat")
+      .value("Tsv", OutputFormat::Tsv)
+      .value("Targets", OutputFormat::Targets);
 
-Raises
-------
-TSTBuildError
-    If no valid PAM sites are found or an output file cannot be written.
-)doc");
+  py::enum_<OutputMode>(m, "OutputMode")
+      .value("TargetsOnly", OutputMode::TargetsOnly)
+      .value("ProfileOnly", OutputMode::ProfileOnly)
+      .value("Both", OutputMode::Both);
+
+  py::enum_<SortMode>(m, "SortMode", "Ordering of the final off-target table.")
+      .value("EditDistance", SortMode::EditDistance)
+      .value("Coordinates", SortMode::Coordinates);
+
+  m.def(
+      "output_format_from_string",
+      [](const std::string &n) { return output_format_from_string(n); },
+      py::arg("name"));
+  m.def(
+      "output_mode_from_string",
+      [](const std::string &n) { return output_mode_from_string(n); },
+      py::arg("name"));
+  m.def(
+      "sort_mode_from_string",
+      [](const std::string &n) { return sort_mode_from_string(n); },
+      py::arg("name"));
+
+  // =========================================================================
+  // SearchConfiguration
+  // =========================================================================
+  py::class_<SearchConfiguration>(m, "SearchConfiguration")
+      .def(py::init<int, int, int, int, OutputFormat, OutputMode>(),
+           py::arg("max_mismatches"), py::arg("max_bulges_dna"),
+           py::arg("max_bulges_rna"), py::arg("threads"),
+           py::arg("output_format") = OutputFormat::Tsv,
+           py::arg("output_mode") = OutputMode::Both)
+      .def_property_readonly("max_mismatches",
+                             &SearchConfiguration::max_mismatches)
+      .def_property_readonly("max_bulges_dna",
+                             &SearchConfiguration::max_bulges_dna)
+      .def_property_readonly("max_bulges_rna",
+                             &SearchConfiguration::max_bulges_rna)
+      .def_property_readonly("threads", &SearchConfiguration::threads)
+      .def_property_readonly("output_format",
+                             &SearchConfiguration::output_format)
+      .def_property_readonly("output_mode", &SearchConfiguration::output_mode)
+      .def_property_readonly("max_total_edits",
+                             &SearchConfiguration::max_total_edits)
+      .def_property_readonly("write_targets",
+                             &SearchConfiguration::write_targets)
+      .def_property_readonly("write_profile",
+                             &SearchConfiguration::write_profile);
+
+  // =========================================================================
+  // GuideProfile (opaque handle)
+  // =========================================================================
+  py::class_<GuideProfile>(m, "GuideProfile")
+      .def_readonly("guide", &GuideProfile::guide)
+      .def_readonly("guide_len", &GuideProfile::guide_len)
+      .def_readonly("ont_count", &GuideProfile::ont_count)
+      .def_readonly("ont_count_complete", &GuideProfile::ont_count_complete)
+      .def("__repr__", [](const GuideProfile &p) {
+        return "<GuideProfile guide='" + p.guide +
+               "' ont=" + std::to_string(p.ont_count_complete) + ">";
+      });
+
+  // =========================================================================
+  // PartitionResult
+  // =========================================================================
+  py::class_<PartitionResult>(m, "PartitionResult")
+      .def_readonly("source_path", &PartitionResult::source_path)
+      .def_readonly("shard_path", &PartitionResult::shard_path)
+      .def_readonly("total_hits", &PartitionResult::total_hits)
+      .def_readonly("rows_written", &PartitionResult::rows_written)
+      .def_readonly("profiles", &PartitionResult::profiles)
+      .def("__repr__", [](const PartitionResult &r) {
+        return "<PartitionResult src='" + r.source_path +
+               "' hits=" + std::to_string(r.total_hits) + ">";
+      });
+
+  // =========================================================================
+  // run_search_executor — one partition: load + search + stream to shard
+  // =========================================================================
+  m.def("run_search_executor", &crispritz::run_search_executor,
+        py::arg("partition_path"), py::arg("chrom"), py::arg("guides"),
+        py::arg("config"), py::arg("pam_len"), py::arg("pam_at_start"),
+        py::arg("shard_path"), py::call_guard<py::gil_scoped_release>(),
+        "Load one .bin partition, search every guide, and stream the hits to a "
+        "shard file (targets) and per-guide profiles. Returns a "
+        "PartitionResult.");
+
+  // =========================================================================
+  // merge_sorted_shards — sort each scored shard, k-way merge to final table
+  // =========================================================================
+  m.def(
+      "merge_sorted_shards", &crispritz::merge_sorted_shards,
+      py::arg("shard_paths"), py::arg("final_path"), py::arg("sort_mode"),
+      py::arg("write_header") = true, py::arg("remove_inputs") = true,
+      py::call_guard<py::gil_scoped_release>(),
+      "Sort each scored shard by sort_mode, then k-way merge into final_path. "
+      "Returns the number of rows written.");
+
+  // =========================================================================
+  // write_merged_profiles — merge per-partition profiles and write the files
+  // =========================================================================
+  m.def("write_merged_profiles", &crispritz::write_merged_profiles,
+        py::arg("profiles_by_partition"), py::arg("path_stem"),
+        py::call_guard<py::gil_scoped_release>(),
+        "Sum per-partition, per-guide profiles and write the five .xls profile "
+        "files at path_stem. Returns the number of guides written.");
 }

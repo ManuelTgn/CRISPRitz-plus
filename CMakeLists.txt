@@ -87,6 +87,8 @@ add_library(crispritz_core STATIC
     cpp/src/output_writer.cpp
     cpp/src/pam_search.cpp
     cpp/src/profile_data.cpp
+    cpp/src/profile_merger.cpp
+    cpp/src/result_merger.cpp
     cpp/src/search_executor.cpp
     cpp/src/search_configuration.cpp
     cpp/src/tst.cpp
@@ -160,6 +162,14 @@ if(BUILD_TESTING)
 
     add_crispritz_test(test_profile_data
         cpp/tests/test_profile_data.cpp
+    )
+
+    add_crispritz_test(test_profile_merger
+        cpp/tests/test_profile_merger.cpp
+    )
+
+    add_crispritz_test(test_result_merger
+        cpp/tests/test_result_merger.cpp
     )
 
     add_crispritz_test(test_search_configuration

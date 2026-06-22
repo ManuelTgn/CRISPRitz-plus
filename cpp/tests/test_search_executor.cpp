@@ -70,11 +70,12 @@ static void test_header_columns() {
   const std::string hdr = f.header();
   auto cols = split(hdr, '\t');
   const std::vector<std::string> expected = {
-      "chrom",      "pos",        "strand",    "grna",     "spacer",
+      "chrom",      "pos",        "strand",    "grna",      "spacer",
       "mismatches", "bulge_type", "bulge_dna", "bulge_rna", "cfd_score"};
   record("header has 10 columns", cols.size() == 10u,
          "got " + std::to_string(cols.size()));
-  record("header column names/order match the scorer contract", cols == expected);
+  record("header column names/order match the scorer contract",
+         cols == expected);
 }
 
 // =============================================================================
@@ -144,7 +145,8 @@ static void test_header_row_width_match() {
   ScoredTsvFormatter f;
   OffTarget ot{"chr1", 1, Strand::Forward, "ACGTANGG", "ACGTAGGG", 0, 0, 0};
   record("header column count == row field count",
-         split(f.header(), '\t').size() == split(f.format_row(ot), '\t').size());
+         split(f.header(), '\t').size() ==
+             split(f.format_row(ot), '\t').size());
 }
 
 // =============================================================================

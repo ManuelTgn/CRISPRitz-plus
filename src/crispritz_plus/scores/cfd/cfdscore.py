@@ -6,8 +6,8 @@ import pickle
 import os
 
 
-from crispritz.dna_alphabet import dna2rna, reverse_complement
-from crispritz.exception_handlers import exception_handler
+from crispritz_plus.dna_alphabet import dna2rna, reverse_complement
+from crispritz_plus.exception_handlers import exception_handler
 
 from ..crispritz_scores_errors import CfdScoreError
 
@@ -41,19 +41,21 @@ def compute_cfd(
 ) -> float:
     score = 1.0  # initialize cfd score
     wildtype, sg = dna2rna(wildtype), dna2rna(sg)  # convert to RNA sequences
-    for i, ntsg in enumerate(sg):
-        if i >= 20:  # handle off-targets bulges
-            break
+    i = 0
+    for ntsg in sg:
         if wildtype[i].upper() == ntsg.upper():
             score *= 1  # no mismatch, score unchanged
+            i += 1
             continue
         elif wildtype[i].upper() == "-" or ntsg.upper() == "-":  # handle bulges
             score *= 1
+            i += 1
             continue
         # build mismatch dictionary key
         key = (
             f"r{wildtype[i].upper()}:d{reverse_complement(ntsg.upper())},{i + 1}"
         )
         score *= mmscores[key]
+        i += 1
     score *= pamscores[pam.upper()]  # multiply by PAM score
     return score

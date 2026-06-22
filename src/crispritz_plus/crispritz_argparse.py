@@ -61,5 +61,3 @@ class CrispritzArgumentParser(ArgumentParser):
     def error_noargs(self) -> None:
         self.print_help()  # if no input argument, print help
         sys.exit(os.EX_NOINPUT)  # exit with no input code
-
-

@@ -79,6 +79,7 @@ IUPAC_ENCODER = {
 # Define DNA-related functions
 # ------------------------------------------------------------------------------
 
+
 def reverse_complement(sequence: str) -> str:
     return "".join(RC[nt] for nt in sequence[::-1])
 
@@ -95,5 +96,3 @@ def dna2rna(sequence: str) -> str:
         str: The RNA sequence.
     """
     return sequence.replace("T", "U").replace("t", "u")
-
-

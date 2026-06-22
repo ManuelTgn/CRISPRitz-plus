@@ -12,12 +12,13 @@ import sys
 # 1 = normal
 # 2 = detail
 # 3 = debug
-VERBOSITY_LVL = [0, 1, 2, 3]  
+VERBOSITY_LVL = [0, 1, 2, 3]
 
 
 # ------------------------------------------------------------------------------
 # verbosity functions
 # ------------------------------------------------------------------------------
+
 
 def print_verbosity(message: str, verbosity: int, verbosity_threshold: int) -> None:
     """Print a message if the verbosity level meets the threshold.
@@ -27,21 +28,13 @@ def print_verbosity(message: str, verbosity: int, verbosity_threshold: int) -> N
 
     Parameters
     ----------
-    message: 
+    message:
         The message to print.
-    verbosity: 
+    verbosity:
         The current verbosity level.
-    verbosity_threshold: 
+    verbosity_threshold:
         The minimum verbosity level required to print the message.
     """
     if verbosity >= verbosity_threshold:
         sys.stdout.write(f"{message}\n")
     return
-
-
-
-
-
-
-
-

@@ -437,6 +437,7 @@ def _create_search_parser(subparser: _SubParsersAction) -> _SubParsersAction:
     )
     return parser_search
 
+
 def _parse_input_args():
     parser = _create_parser_crispritz()  # parse input argument using custom parser
     if not sys.argv[1:]:  # no input args -> print help and exit

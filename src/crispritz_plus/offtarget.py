@@ -316,9 +316,7 @@ class OffTarget:
             If *value* is not a :class:`str`.
         """
         if not isinstance(value, float):
-            raise TypeError(
-                f"cfd_score must be a str, got {type(value).__name__!r}"
-            )
+            raise TypeError(f"cfd_score must be a str, got {type(value).__name__!r}")
         self._cfd_score = f"{value:.2f}"
 
     @property
@@ -396,4 +394,3 @@ class OffTarget:
             E.g. ``'chr1:123456(+)'``.
         """
         return f"{self._chrom}:{self._pos}({self._strand})"
-    

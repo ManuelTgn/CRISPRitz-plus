@@ -27,7 +27,7 @@ class Guide:
     @property
     def sequence(self) -> str:
         return self._sequence
-    
+
     @property
     def reverse(self) -> str:
         return self._sequence_rc

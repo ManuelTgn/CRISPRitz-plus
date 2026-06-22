@@ -8,7 +8,7 @@ class CrispritzError(Exception):
 
     def __str__(self):
         return repr(self._value)  # string representation for the exception
-    
+
 
 class GenomeIoError(CrispritzError):
     def __init__(self, value: str):
@@ -17,7 +17,7 @@ class GenomeIoError(CrispritzError):
 
     def __str__(self):
         return super().__str__()  # string representation for the exception
-    
+
 
 class GenomeReaderError(GenomeIoError):
     def __init__(self, value: str):
@@ -35,7 +35,6 @@ class GenomeWriterError(GenomeIoError):
 
     def __str__(self):
         return super().__str__()  # string representation for the exception
-
 
 
 class CrispritzPamError(CrispritzError):

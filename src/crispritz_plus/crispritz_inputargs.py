@@ -240,7 +240,7 @@ class CrispritzSearchInputArgs(CrispritzInputArgs):
     @property
     def brna(self) -> int:
         return self._args.brna
-    
+
     @property
     def output_mode(self) -> str:
         return self._args.output_mode

@@ -45,6 +45,7 @@
 #include "output_writer.hpp"        // OffTargetFormatter
 #include "profile_data.hpp"         // GuideProfile
 #include "search_configuration.hpp" // SearchConfiguration
+#include "tst_search.hpp"           // BulgeMode
 
 #include <cstddef>
 #include <string>
@@ -133,11 +134,15 @@ inline constexpr std::size_t SHARD_FLUSH_THRESHOLD = 100'000;
  *                       (resolved Python-side from the partition filename).
  * @param guides         Query guides in canonical orientation.
  * @param config         Validated search parameters (gates targets/profile).
- * @param pam_len        Number of PAM bases (from the PAM model; the .bin
- *                       header does not carry it — see file header).
+ * @param pam            PAM motif (e.g. "NGG"). The search needs the actual
+ *                       bases to emit; its length also drives the profile
+ *                       column geometry. (The .bin header carries pam_limit
+ *                       for the index; this is the query-side motif.)
  * @param pam_at_start   True when the PAM precedes the guide body (Cas12a).
  * @param shard_path     Destination shard file for the targets table. Used
  *                       only when @c config.write_targets(); ignored otherwise.
+ * @param bulge_mode     Whether one alignment may mix DNA+RNA bulges
+ *                       (see @c BulgeMode).
  *
  * @return A PartitionResult with per-guide profiles and counts.
  *
@@ -150,7 +155,8 @@ inline constexpr std::size_t SHARD_FLUSH_THRESHOLD = 100'000;
 [[nodiscard]] PartitionResult
 run_search_executor(const std::string &partition_path, const std::string &chrom,
                     const std::vector<std::string> &guides,
-                    const SearchConfiguration &config, int pam_len,
-                    bool pam_at_start, const std::string &shard_path);
+                    const SearchConfiguration &config, const std::string &pam,
+                    bool pam_at_start, const std::string &shard_path,
+                    BulgeMode bulge_mode = BulgeMode::MixedBulges);
 
 } // namespace crispritz

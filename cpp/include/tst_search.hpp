@@ -246,8 +246,8 @@ public:
    */
   [[nodiscard]] std::vector<OffTarget>
   search(const LoadedTST &tst, std::string_view guide_seq,
-        const std::string &chrom, const std::string &pam, bool pam_at_start,
-        BulgeMode bulge_mode = BulgeMode::MixedBulges) const;
+         const std::string &chrom, const std::string &pam, bool pam_at_start,
+         BulgeMode bulge_mode = BulgeMode::MixedBulges) const;
   /**
    * @brief Search one loaded partition for many guides.
    *
@@ -268,8 +268,9 @@ public:
    */
   [[nodiscard]] SearchResult
   search_all(const LoadedTST &tst, const std::vector<std::string> &guides,
-            const std::string &chrom, const std::string &pam, bool pam_at_start,
-            BulgeMode bulge_mode = BulgeMode::MixedBulges) const;
+             const std::string &chrom, const std::string &pam,
+             bool pam_at_start,
+             BulgeMode bulge_mode = BulgeMode::MixedBulges) const;
 
   /** @return The configuration this searcher was constructed with. */
   [[nodiscard]] const SearchConfiguration &config() const noexcept {

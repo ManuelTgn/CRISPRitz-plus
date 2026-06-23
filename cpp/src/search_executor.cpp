@@ -71,13 +71,18 @@ PartitionResult run_search_executor(const std::string &partition_path,
                                     const std::string &chrom,
                                     const std::vector<std::string> &guides,
                                     const SearchConfiguration &config,
-                                    int pam_len, bool pam_at_start,
-                                    const std::string &shard_path) {
+                                    const std::string &pam, bool pam_at_start,
+                                    const std::string &shard_path,
+                                    BulgeMode bulge_mode) {
   LoadedTST tst = load_partition(partition_path);
   TSTSearcher searcher(config);
 
   const bool want_targets = config.write_targets();
   const bool want_profile = config.write_profile();
+
+  // The motif travels as a string now (search() needs the bases to emit);
+  // its length is the profile column geometry, so derive rather than duplicate.
+  const int pam_len = static_cast<int>(pam.size());
 
   PartitionResult result;
   result.source_path = tst.source_path();
@@ -111,7 +116,8 @@ PartitionResult run_search_executor(const std::string &partition_path,
   // Search one guide at a time and sink each guide's hits immediately, so the
   // hit vector is released before the next guide is searched.
   for (std::size_t i = 0; i < guides.size(); ++i) {
-    const std::vector<OffTarget> hits = searcher.search(tst, guides[i], chrom);
+    const std::vector<OffTarget> hits =
+        searcher.search(tst, guides[i], chrom, pam, pam_at_start, bulge_mode);
     for (const OffTarget &ot : hits) {
       if (want_targets)
         session->add(ot);

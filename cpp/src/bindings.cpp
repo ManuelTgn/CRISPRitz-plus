@@ -26,6 +26,7 @@
 #include "search_configuration.hpp" // SearchConfiguration, OutputFormat/Mode
 #include "search_executor.hpp"      // run_search_executor, PartitionResult
 #include "tst.hpp"                  // build_tree
+#include "tst_search.hpp"           // BulgeMode, bulge_mode_from_string
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h> // std::string / std::vector auto-conversion
@@ -70,6 +71,11 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
       .value("EditDistance", SortMode::EditDistance)
       .value("Coordinates", SortMode::Coordinates);
 
+  py::enum_<BulgeMode>(m, "BulgeMode",
+                       "Whether one alignment may mix DNA and RNA bulges.")
+      .value("MixedBulges", BulgeMode::MixedBulges)
+      .value("SingleBulgeType", BulgeMode::SingleBulgeType);
+
   m.def(
       "output_format_from_string",
       [](const std::string &n) { return output_format_from_string(n); },
@@ -82,6 +88,10 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
       "sort_mode_from_string",
       [](const std::string &n) { return sort_mode_from_string(n); },
       py::arg("name"));
+  m.def(
+      "bulge_mode_from_string",
+      [](const std::string &s) { return bulge_mode_from_string(s); },
+      py::arg("s"));
 
   // =========================================================================
   // SearchConfiguration
@@ -141,8 +151,9 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
   // =========================================================================
   m.def("run_search_executor", &crispritz::run_search_executor,
         py::arg("partition_path"), py::arg("chrom"), py::arg("guides"),
-        py::arg("config"), py::arg("pam_len"), py::arg("pam_at_start"),
-        py::arg("shard_path"), py::call_guard<py::gil_scoped_release>(),
+        py::arg("config"), py::arg("pam"), py::arg("pam_at_start"),
+        py::arg("shard_path"), py::arg("bulge_mode") = BulgeMode::MixedBulges,
+        py::call_guard<py::gil_scoped_release>(),
         "Load one .bin partition, search every guide, and stream the hits to a "
         "shard file (targets) and per-guide profiles. Returns a "
         "PartitionResult.");

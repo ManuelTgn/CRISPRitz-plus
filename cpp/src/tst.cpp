@@ -103,7 +103,7 @@ void TernarySearchTree::extract_forward(int pos,
 
   if (!pam_at_start_ && (pos - max_bulges_ >= 0))
     pos = pos - max_bulges_;
-                  
+
   std::string_view window_view(sequence_.data() + pos, window);
 
   if (window_view.find('N') != std::string_view::npos)
@@ -116,12 +116,13 @@ void TernarySearchTree::extract_forward(int pos,
     // The guide is reversed before insertion (TST search order is 3'->5').
     std::string guide_raw(window_view.substr(0, guide_length_ + max_bulges_));
     std::reverse(guide_raw.begin(), guide_raw.end());
-    
+
     leaf.guide_seq = std::move(guide_raw);
-    leaf.guide_index = pos + window - 1;  // positive -> forward strand
+    leaf.guide_index = pos + window - 1; // positive -> forward strand
 
     // PAM: rightmost pam_limit_ chars, reversed for storage.
-    std::string pam_raw(window_view.substr(guide_length_ + max_bulges_, pam_limit_));
+    std::string pam_raw(
+        window_view.substr(guide_length_ + max_bulges_, pam_limit_));
     std::reverse(pam_raw.begin(), pam_raw.end());
     leaf.pam_seq_enc = encode_pam_bytes(pam_raw);
   } else {
@@ -132,7 +133,7 @@ void TernarySearchTree::extract_forward(int pos,
 
     leaf.guide_seq = std::string(
         window_view.substr(pam_limit_, guide_length_ + max_bulges_));
-    leaf.guide_index = pos;  // positive -> forward strand
+    leaf.guide_index = pos; // positive -> forward strand
   }
 
   dest.push_back(std::move(leaf));
@@ -287,44 +288,66 @@ void TernarySearchTree::insert(std::string_view guide_str, int leaf_idx,
 
   // Index 0 is a pure SENTINEL; the whole tree hangs off root.eqkid.
   // load_partition + traverse() recognise (idx==0, enc==0, lo==hi==0).
-  if (nodes_[0].eqkid <= 0) {                 // empty tree -> first chain under sentinel
+  if (nodes_[0].eqkid <= 0) { // empty tree -> first chain under sentinel
     const int first = alloc_node();
     nodes_[0].eqkid = first;
     for (int cur = first;;) {
       nodes_[cur].splitchar = *s;
       nodes_[cur].splitchar_enc = iupac::encode_genome(*s);
-      if (*++s == '\0') { nodes_[cur].eqkid = encoded_leaf; return; }
+      if (*++s == '\0') {
+        nodes_[cur].eqkid = encoded_leaf;
+        return;
+      }
       const int nxt = alloc_node();
       nodes_[cur].eqkid = nxt;
       cur = nxt;
     }
   }
 
-  int cur = nodes_[0].eqkid;                    // navigation starts at first REAL node
+  int cur = nodes_[0].eqkid; // navigation starts at first REAL node
   for (;;) {
-    const int d = static_cast<int>(static_cast<unsigned char>(*s)) -
-                  static_cast<int>(static_cast<unsigned char>(nodes_[cur].splitchar));
+    const int d =
+        static_cast<int>(static_cast<unsigned char>(*s)) -
+        static_cast<int>(static_cast<unsigned char>(nodes_[cur].splitchar));
     if (d == 0) {
-      if (*++s == '\0') {                       // terminal -> chain this leaf in front
+      if (*++s == '\0') { // terminal -> chain this leaf in front
         leaves_[leaf_idx].next = nodes_[cur].eqkid;
         nodes_[cur].eqkid = encoded_leaf;
         return;
       }
-      if (nodes_[cur].eqkid <= 0) { const int c = alloc_node(); nodes_[cur].eqkid = c; cur = c; break; }
+      if (nodes_[cur].eqkid <= 0) {
+        const int c = alloc_node();
+        nodes_[cur].eqkid = c;
+        cur = c;
+        break;
+      }
       cur = nodes_[cur].eqkid;
     } else if (d < 0) {
-      if (nodes_[cur].lokid == 0) { const int c = alloc_node(); nodes_[cur].lokid = c; cur = c; break; }
+      if (nodes_[cur].lokid == 0) {
+        const int c = alloc_node();
+        nodes_[cur].lokid = c;
+        cur = c;
+        break;
+      }
       cur = nodes_[cur].lokid;
     } else {
-      if (nodes_[cur].hikid == 0) { const int c = alloc_node(); nodes_[cur].hikid = c; cur = c; break; }
+      if (nodes_[cur].hikid == 0) {
+        const int c = alloc_node();
+        nodes_[cur].hikid = c;
+        cur = c;
+        break;
+      }
       cur = nodes_[cur].hikid;
     }
   }
 
-  for (;;) {                                    // build remaining chars as an equal-chain
+  for (;;) { // build remaining chars as an equal-chain
     nodes_[cur].splitchar = *s;
     nodes_[cur].splitchar_enc = iupac::encode_genome(*s);
-    if (*++s == '\0') { nodes_[cur].eqkid = encoded_leaf; return; }
+    if (*++s == '\0') {
+      nodes_[cur].eqkid = encoded_leaf;
+      return;
+    }
     const int c = alloc_node();
     nodes_[cur].eqkid = c;
     cur = c;
@@ -425,7 +448,7 @@ void TernarySearchTree::write_partition(int part, int chunk_start,
   out.write(reinterpret_cast<const char *>(&chunk_size), sizeof(int));
   out.write(reinterpret_cast<const char *>(&guide_length_), sizeof(int));
   out.write(reinterpret_cast<const char *>(&pam_limit_), sizeof(int));
-  
+
   // ---- leaf array ----
   for (int i = chunk_start; i < chunk_end; ++i) {
     const TSTLeaf &leaf = leaves_[i];

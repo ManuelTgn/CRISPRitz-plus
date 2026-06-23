@@ -14,7 +14,7 @@ namespace crispritz {
 // A self-describing header lets the loader reject foreign/old/corrupt files
 // up front instead of silently mis-parsing them. Bump TST_BIN_VERSION whenever
 // the byte layout changes.
-inline constexpr std::uint32_t TST_BIN_MAGIC   = 0x505A5243u; // "CRZP" (LE)
+inline constexpr std::uint32_t TST_BIN_MAGIC = 0x505A5243u; // "CRZP" (LE)
 inline constexpr std::uint32_t TST_BIN_VERSION = 1u;
 
 /**

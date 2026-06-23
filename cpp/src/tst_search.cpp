@@ -5,10 +5,10 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include <iostream>
 
 // using namespace pam; // NucleotideEncoder::*
 
@@ -21,7 +21,8 @@ namespace crispritz {
 LoadedTST::LoadedTST(std::vector<TSTNode> nodes, std::vector<TSTLeaf> leaves,
                      int guide_length, int pam_limit, std::string source_path)
     : nodes_(std::move(nodes)), leaves_(std::move(leaves)),
-      guide_length_(guide_length), pam_limit_(pam_limit), source_path_(std::move(source_path)) {
+      guide_length_(guide_length), pam_limit_(pam_limit),
+      source_path_(std::move(source_path)) {
   if (nodes_.empty())
     throw std::invalid_argument("LoadedTST: node pool must not be empty");
   if (guide_length_ <= 0)
@@ -319,8 +320,8 @@ LoadedTST load_partition(const std::string &partition_path) {
     nodes.emplace_back();
   }
 
-  return LoadedTST{std::move(nodes), std::move(leaves), guide_length,
-                   pam_limit, partition_path}; 
+  return LoadedTST{std::move(nodes), std::move(leaves), guide_length, pam_limit,
+                   partition_path};
 }
 
 // =========================================================================
@@ -348,14 +349,14 @@ namespace {
  * few ints and two short strings per recursive call.
  */
 struct Frame {
-  int mm_left;            // remaining substitution budget
-  int bdna_left;          // remaining DNA-bulge budget
-  int brna_left;          // remaining RNA-bulge budget
-  std::size_t guide_pos;  // next index into the query guide
-  std::string aln_guide;  // aligned guide chars accumulated so far
-  std::string aln_target; // aligned target chars accumulated so far
-  bool dna_bulge_used = false;   // DNA bulge was opened on this path
-  bool rna_bulge_used = false;   // RNA bulge was opened on this path
+  int mm_left;                 // remaining substitution budget
+  int bdna_left;               // remaining DNA-bulge budget
+  int brna_left;               // remaining RNA-bulge budget
+  std::size_t guide_pos;       // next index into the query guide
+  std::string aln_guide;       // aligned guide chars accumulated so far
+  std::string aln_target;      // aligned target chars accumulated so far
+  bool dna_bulge_used = false; // DNA bulge was opened on this path
+  bool rna_bulge_used = false; // RNA bulge was opened on this path
 };
 
 /** @brief Bundle of read-only context shared across the recursion. */
@@ -372,7 +373,8 @@ struct Context {
 
 // Forward declaration: the traversal recurses through three node slots.
 void traverse(const Context &ctx, int node_idx, Frame frame,
-              std::vector<OffTarget> &out, const std::string &pam, bool pam_at_start);
+              std::vector<OffTarget> &out, const std::string &pam,
+              bool pam_at_start);
 
 /**
  * @brief Decode a bit-packed PAM (TSTLeaf::pam_seq_enc) into nucleotides.
@@ -415,7 +417,8 @@ std::string decode_pam(const std::vector<uint8_t> &enc, int pam_limit) {
  * counts; only their genomic position/strand differ.
  */
 void emit_leaf_chain(const Context &ctx, int leaf_ptr, const Frame &frame,
-                     std::vector<OffTarget> &out, const std::string &pam, bool pam_at_start) {
+                     std::vector<OffTarget> &out, const std::string &pam,
+                     bool pam_at_start) {
 
   const auto &leaves = ctx.tst->leaves();
   int idx = -leaf_ptr - 1; // decode within-chunk leaf index
@@ -470,10 +473,10 @@ void emit_leaf_chain(const Context &ctx, int leaf_ptr, const Frame &frame,
     // Guide carries the PAM *motif* (e.g. "NGG"); target carries the decoded
     // actual PAM bases at this genomic site.
     if (!pam_at_start) {
-      aln_guide  += pam;
+      aln_guide += pam;
       aln_target += pam_target;
     } else {
-      aln_guide  = pam + aln_guide;
+      aln_guide = pam + aln_guide;
       aln_target = pam_target + aln_target;
     }
 
@@ -481,11 +484,9 @@ void emit_leaf_chain(const Context &ctx, int leaf_ptr, const Frame &frame,
     int pos_t = pos;
     if (!pam_at_start && strand == Strand::Forward) {
       pos_t = pos_t - (aln_target.size() - brna_count) + 1;
-    } else if (pam_at_start && strand == Strand::Forward)
-    {
+    } else if (pam_at_start && strand == Strand::Forward) {
       pos_t = pos_t - (aln_target.size() - brna_count) + 1;
     }
-    
 
     out.emplace_back(
         /*chrom  */ std::string(ctx.chrom),
@@ -511,22 +512,24 @@ void emit_leaf_chain(const Context &ctx, int leaf_ptr, const Frame &frame,
 // the alignment accumulated so far. The suffix bases below this node are
 // not part of the guide match, so the alignment strings are NOT extended.
 void harvest(const Context &ctx, int node_idx, const Frame &frame,
-             std::vector<OffTarget> &out, const std::string &pam, bool pam_at_start) {
-  if (node_idx <= 0 || node_idx >= (int)ctx.tst->nodes().size()) 
+             std::vector<OffTarget> &out, const std::string &pam,
+             bool pam_at_start) {
+  if (node_idx <= 0 || node_idx >= (int)ctx.tst->nodes().size())
     return;
   const TSTNode &n = ctx.tst->nodes()[(std::size_t)node_idx];
-  if (n.lokid > 0) 
+  if (n.lokid > 0)
     harvest(ctx, n.lokid, frame, out, pam, pam_at_start);
-  if (n.hikid > 0) 
+  if (n.hikid > 0)
     harvest(ctx, n.hikid, frame, out, pam, pam_at_start);
-  if (n.eqkid < 0)      
+  if (n.eqkid < 0)
     emit_leaf_chain(ctx, n.eqkid, frame, out, pam, pam_at_start);
-  else if (n.eqkid > 0) 
+  else if (n.eqkid > 0)
     harvest(ctx, n.eqkid, frame, out, pam, pam_at_start);
 }
 
 void traverse(const Context &ctx, int node_idx, Frame frame,
-              std::vector<OffTarget> &out, const std::string &pam, bool pam_at_start) {
+              std::vector<OffTarget> &out, const std::string &pam,
+              bool pam_at_start) {
   if (node_idx < 0 || node_idx >= static_cast<int>(ctx.tst->nodes().size()))
     return;
 
@@ -546,16 +549,16 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
   }
 
   // alternative splitchars at this depth — no guide consumed
-  if (node.lokid > 0) 
+  if (node.lokid > 0)
     traverse(ctx, node.lokid, frame, out, pam, pam_at_start);
-  if (node.hikid > 0) 
+  if (node.hikid > 0)
     traverse(ctx, node.hikid, frame, out, pam, pam_at_start);
 
   // GUIDE EXHAUSTED -> harvest leaves in this subtree (was: return)
   if (frame.guide_pos >= static_cast<std::size_t>(ctx.guide_len)) {
-    if (node.eqkid < 0)      
+    if (node.eqkid < 0)
       emit_leaf_chain(ctx, node.eqkid, frame, out, pam, pam_at_start);
-    else if (node.eqkid > 0) 
+    else if (node.eqkid > 0)
       harvest(ctx, node.eqkid, frame, out, pam, pam_at_start);
     return;
   }
@@ -563,7 +566,7 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
   // Not exhausted: read the query base. Index stores guides reversed
   // (PAM-at-end), so consume the query from the 3' end inward
   const int gpos = ctx.guide_len - 1 - static_cast<int>(frame.guide_pos);
-  const char q_char  = ctx.guide[static_cast<size_t>(gpos)];
+  const char q_char = ctx.guide[static_cast<size_t>(gpos)];
   const uint8_t q_enc = iupac::encode_genome(q_char);
   const bool is_match = iupac::matches(q_enc, node.splitchar_enc);
   const char node_char = node.splitchar;
@@ -573,20 +576,21 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
   auto step_eq = [&](Frame nx) {
     if (node.eqkid > 0)
       traverse(ctx, node.eqkid, std::move(nx), out, pam, pam_at_start);
-    else if (node.eqkid < 0 && nx.guide_pos >= static_cast<std::size_t>(ctx.guide_len))
+    else if (node.eqkid < 0 &&
+             nx.guide_pos >= static_cast<std::size_t>(ctx.guide_len))
       emit_leaf_chain(ctx, node.eqkid, nx, out, pam, pam_at_start);
   };
 
   if (is_match) {
-    Frame nx = frame; 
-    nx.aln_guide += node_char; 
-    nx.aln_target += node_char; 
+    Frame nx = frame;
+    nx.aln_guide += node_char;
+    nx.aln_target += node_char;
     nx.guide_pos++;
     step_eq(std::move(nx));
   } else if (frame.mm_left > 0) {
-    Frame nx = frame; 
-    nx.mm_left--; 
-    nx.aln_guide += q_char;// query base (upper)
+    Frame nx = frame;
+    nx.mm_left--;
+    nx.aln_guide += q_char;             // query base (upper)
     nx.aln_target += static_cast<char>( // genome base (lower)
         node_char >= 'A' && node_char <= 'Z' ? node_char - 'A' + 'a'
                                              : node_char);
@@ -599,13 +603,13 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
   //      node (eqkid) but NOT the guide position.
   if (frame.bdna_left > 0 &&
       !(ctx.bulge_mode == BulgeMode::SingleBulgeType && frame.rna_bulge_used)) {
-    Frame nx = frame; 
-    nx.bdna_left--; 
+    Frame nx = frame;
+    nx.bdna_left--;
     nx.dna_bulge_used = true;
     nx.aln_guide += '-';        // gap in guide
     nx.aln_target += node_char; // extra genomic base
     // guide_pos unchanged
-    if (node.eqkid > 0) 
+    if (node.eqkid > 0)
       traverse(ctx, node.eqkid, std::move(nx), out, pam, pam_at_start);
     // (a DNA bulge cannot land exactly on a leaf terminal without a
     //  following matched base, so we do not emit on eqkid < 0 here)
@@ -616,24 +620,23 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
   //      target side, advance the guide but stay on the same node.
   if (frame.brna_left > 0 &&
       !(ctx.bulge_mode == BulgeMode::SingleBulgeType && frame.dna_bulge_used)) {
-    Frame nx = frame; 
-    nx.brna_left--; 
+    Frame nx = frame;
+    nx.brna_left--;
     nx.rna_bulge_used = true;
     nx.aln_guide += q_char; // extra guide base
     nx.aln_target += '-';   // gap in target
     nx.guide_pos++;
-    traverse(ctx, node_idx, std::move(nx), out, pam, pam_at_start); // same node, advanced guide
+    traverse(ctx, node_idx, std::move(nx), out, pam,
+             pam_at_start); // same node, advanced guide
   }
 }
 
 } // namespace
 
-std::vector<OffTarget> TSTSearcher::search(const LoadedTST &tst,
-                                           std::string_view guide_seq,
-                                           const std::string &chrom,
-                                           const std::string &pam,
-                                           bool pam_at_start,
-                                           BulgeMode bulge_mode) const {  
+std::vector<OffTarget>
+TSTSearcher::search(const LoadedTST &tst, std::string_view guide_seq,
+                    const std::string &chrom, const std::string &pam,
+                    bool pam_at_start, BulgeMode bulge_mode) const {
   // Deferred guide-length / edit-budget validation (see header contract).
   if (config_.max_total_edits() > tst.guide_length())
     throw std::invalid_argument("TSTSearcher::search: max_total_edits (" +
@@ -652,14 +655,14 @@ std::vector<OffTarget> TSTSearcher::search(const LoadedTST &tst,
   ctx.guide = guide_seq;
   ctx.guide_len = static_cast<int>(guide_seq.size());
   ctx.chrom = chrom;
-  ctx.bulge_mode = bulge_mode; 
+  ctx.bulge_mode = bulge_mode;
 
   Frame root;
   root.mm_left = config_.max_mismatches();
   root.bdna_left = config_.max_bulges_dna();
   root.brna_left = config_.max_bulges_rna();
   root.guide_pos = 0;
-   // dna_bulge_used / rna_bulge_used default to false
+  // dna_bulge_used / rna_bulge_used default to false
   root.aln_guide.reserve(
       static_cast<std::size_t>(ctx.guide_len + config_.max_bulges_total()));
   root.aln_target.reserve(
@@ -695,7 +698,8 @@ SearchResult TSTSearcher::search_all(const LoadedTST &tst,
   // performance. Keeping this serial is the correct design, not an
   // oversight.
   for (const std::string &g : guides)
-    result.hits_by_guide.push_back(search(tst, g, chrom, pam, pam_at_start, bulge_mode));
+    result.hits_by_guide.push_back(
+        search(tst, g, chrom, pam, pam_at_start, bulge_mode));
 
   return result;
 }

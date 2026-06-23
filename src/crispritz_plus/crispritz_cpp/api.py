@@ -1,10 +1,11 @@
 """ """
 
-from typing import List, Sequence, Union
+from typing import List, Union
 
 
 from crispritz_plus import _ternary_search_tree as tst  # type: ignore
 
+from .bulge_mode import BulgeMode
 from .guide_profile import GuideProfile
 from .output_mode import OutputMode
 from .partition_results import PartitionResult
@@ -76,12 +77,23 @@ def run_search_executor_cpp(
     chrom: str,
     guides: List[str],
     config: SearchConfiguration,
-    pam_len: int,
+    pam: str,
     pam_at_start: bool,
     shard_path: str,
+    bulge_mode: Union[str, BulgeMode] = "mixed",
 ) -> PartitionResult:
+    mode = (
+        BulgeMode.from_string(bulge_mode) if isinstance(bulge_mode, str) else bulge_mode
+    )
     return tst.run_search_executor(
-        partition_path, chrom, guides, config.native, pam_len, pam_at_start, shard_path
+        partition_path,
+        chrom,
+        guides,
+        config.native,
+        pam,
+        pam_at_start,
+        shard_path,
+        mode,
     )
 
 
@@ -102,6 +114,7 @@ def write_merged_profiles_cpp(
     profiles_by_partition: List[List[GuideProfile]], path_stem: str
 ) -> int:
     profiles_by_partition_native = [
-        [profile.native for profile in partition] for partition in profiles_by_partition
+        [getattr(profile, "native", profile) for profile in partition]
+        for partition in profiles_by_partition
     ]
     return tst.write_merged_profiles(profiles_by_partition_native, path_stem)

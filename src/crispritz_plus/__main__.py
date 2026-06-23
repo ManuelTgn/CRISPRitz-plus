@@ -28,6 +28,7 @@ from .crispritz_inputargs import (
     CrispritzIndexingInputArgs,
     CrispritzSearchInputArgs,
     OUTPUT_MODES,
+    BULGE_MODES,
 )
 from .enrichment import add_variants_cli
 from .exception_handlers import sigint_handler
@@ -386,6 +387,20 @@ def _create_search_parser(subparser: _SubParsersAction) -> _SubParsersAction:
         help="maximum number of RNA bulges allowed in the guide/off-target "
         "alignment. Cannot exceed the bulge budget the index was built with "
         "(default: 0)",
+    )
+    optional_group.add_argument(
+        "--bulge-mode",
+        type=str,
+        metavar="MODE",
+        dest="bulge_mode",
+        choices=BULGE_MODES,
+        required=False,
+        default=BULGE_MODES[0],  # "mixed"
+        help="how DNA and RNA bulges may co-occur within a single alignment: "
+        "'mixed' allows both bulge kinds in the same off-target (each up to its "
+        "--bdna/--brna budget); 'single' allows only one bulge kind per "
+        "off-target. Mismatches are unaffected either way "
+        "(choices: mixed, single; default: mixed)",
     )
     optional_group.add_argument(
         "--output-mode",

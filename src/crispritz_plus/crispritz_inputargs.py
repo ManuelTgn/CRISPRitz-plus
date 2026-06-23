@@ -18,6 +18,12 @@ from .verbosity import VERBOSITY_LVL
 # output_format_from_string(); they must match those expected tokens exactly.
 OUTPUT_MODES = ("both", "targets", "profile")
 
+# Canonical bulge-mode CLI choices — kept in sync with the C++ BulgeMode enum.
+# Passed verbatim to bulge_mode_from_string(): "mixed" allows DNA+RNA bulges in
+# one alignment, "single" allows only one kind. (Legacy "both" still parses
+# C++-side but is not offered as a CLI choice.)
+BULGE_MODES = ("mixed", "single")
+
 
 class CrispritzInputArgs:
     def __init__(self, args: Namespace, parser: CrispritzArgumentParser) -> None:
@@ -244,6 +250,10 @@ class CrispritzSearchInputArgs(CrispritzInputArgs):
     @property
     def output_mode(self) -> str:
         return self._args.output_mode
+
+    @property
+    def bulge_mode(self) -> str:
+        return self._args.bulge_mode
 
 
 def _check_folder(dirname: str, parser: CrispritzArgumentParser, msg: str) -> None:

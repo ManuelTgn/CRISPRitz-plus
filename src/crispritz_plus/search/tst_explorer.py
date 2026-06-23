@@ -58,6 +58,7 @@ def _search_parallel(
     guides: List[str],
     pam: PAM,
     shard_dir: str,
+    bulge_mode: str,
     workers: int,
     verbosity: int,
     debug: bool,
@@ -78,9 +79,10 @@ def _search_parallel(
                 _contig_from_partition(partition, debug),
                 guides,
                 config,
-                pam.size,
+                pam.pamseq,
                 pam.upstream,
                 shard,
+                bulge_mode,
             )
             future_to_partition[future] = partition
         for future in as_completed(future_to_partition):
@@ -133,6 +135,7 @@ def search_offtargets_tst(
     threads: int,
     verbosity: int,
     debug: bool,
+    bulge_mode: str = "mixed",
     output_mode: str = "both",
     sort_mode: str = "edit_distance",
 ) -> None:
@@ -153,7 +156,15 @@ def search_offtargets_tst(
     )
     # -- phase 1: parallel per-partition search
     results = _search_parallel(
-        config, partitions, guides, pam, shard_dir, threads, verbosity, debug
+        config,
+        partitions,
+        guides,
+        pam,
+        shard_dir,
+        bulge_mode,
+        threads,
+        verbosity,
+        debug,
     )
     guides_stem = os.path.splitext(os.path.basename(guides_file))[0]
     # -- phase 2-3: score shards, then sort + k-way merge (targets)

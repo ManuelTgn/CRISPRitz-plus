@@ -88,4 +88,4 @@ def _validate_guide_sequence(
             os.EX_DATAERR,
             debug,
         )
-    return guide
+    return guide[pam_size:] if pam_upstream else guide[:-pam_size]

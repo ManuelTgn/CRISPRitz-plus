@@ -14,4 +14,6 @@ def search_offtargets_cli(args: CrispritzSearchInputArgs) -> None:
         args.threads,
         args.verbosity,
         args.debug,
+        args.bulge_mode,
+        args.output_mode,
     )

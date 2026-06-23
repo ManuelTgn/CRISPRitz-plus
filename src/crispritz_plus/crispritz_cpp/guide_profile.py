@@ -1,15 +1,18 @@
 """Python wrapper over the C++ GuideProfile.
 
 A GuideProfile holds a guide's accumulated profiling statistics; it is produced
-C++-side and consumed C++-side (it is passed back to the profile-merge entry
-point as an opaque value). This wrapper takes the native object, delegates the
-read-only fields exposed across the binding, and exposes the underlying object
-via :pyattr:`native` so it can be handed back across the boundary.
+C++-side (returned inside ``PartitionResult.profiles``) and consumed C++-side
+(passed back to the profile-merge entry point as an opaque value). This wrapper
+holds the native object, delegates the read-only fields exposed across the
+binding, and exposes the underlying object via :pyattr:`native` so it can be
+handed back across the boundary.
 
 Only the fields the binding surfaces (guide identity and on-target counts) are
 delegated; the full counter matrices stay C++-internal and are written by the
 ProfileWriter, never inspected from Python.
 """
+
+from typing import Union
 
 from crispritz_plus import _ternary_search_tree as tst  # type: ignore
 
@@ -19,8 +22,10 @@ class GuideProfile:
 
     __slots__ = ("_profile",)
 
-    def __init__(self, profile: object) -> None:
-        # Accept a native C++ GuideProfile or another GuideProfile wrapper.
+    def __init__(self, profile: Union["tst.GuideProfile", "GuideProfile"]) -> None:
+        # Idempotent: accept a native C++ GuideProfile or another GuideProfile
+        # wrapper. A native object has no ``native`` attribute, so getattr
+        # returns it unchanged; a wrapper yields its underlying native object.
         self._profile = getattr(profile, "native", profile)
 
     # ------------------------------------------------------------------

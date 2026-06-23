@@ -10,8 +10,6 @@
 #include <string>
 #include <vector>
 
-// using namespace pam; // NucleotideEncoder::*
-
 namespace crispritz {
 
 // =========================================================================
@@ -31,6 +29,21 @@ LoadedTST::LoadedTST(std::vector<TSTNode> nodes, std::vector<TSTLeaf> leaves,
   if (pam_limit_ <= 0)
     throw std::invalid_argument("LoadedTST: pam_limit must be > 0, got " +
                                 std::to_string(pam_limit_));
+}
+
+// =========================================================================
+// BulgeMode free functions
+// =========================================================================
+
+BulgeMode bulge_mode_from_string(std::string_view s) {
+  if (s == "mixed") // "both" is the legacy token for mixed
+    return BulgeMode::MixedBulges;
+  if (s == "single")
+    return BulgeMode::SingleBulgeType;
+  throw std::invalid_argument(
+      "bulge_mode_from_string: expected \"mixed\" (or legacy \"both\") or "
+      "\"single\", got \"" +
+      std::string(s) + '"');
 }
 
 // =========================================================================
@@ -465,10 +478,7 @@ void emit_leaf_chain(const Context &ctx, int leaf_ptr, const Frame &frame,
     // stores the PAM reversed in every case EXCEPT reverse-strand + PAM-at-end
     // (see extract_forward / extract_reverse), so undo exactly that reversal.
     std::string pam_target = decode_pam(leaf.pam_seq_enc, ctx.tst->pam_limit());
-    const bool pam_stored_reversed =
-        (strand == Strand::Forward) || pam_at_start;
-    if (pam_stored_reversed)
-      std::reverse(pam_target.begin(), pam_target.end());
+    std::reverse(pam_target.begin(), pam_target.end());
 
     // Guide carries the PAM *motif* (e.g. "NGG"); target carries the decoded
     // actual PAM bases at this genomic site.

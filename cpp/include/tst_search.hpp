@@ -52,13 +52,14 @@ public:
    * @param leaves        Leaf array indexed by the negative @c eqkid
    *                      encoding used in @c TSTNode.
    * @param guide_length  Guide length read from the partition header (> 0).
+   * @param pam_limit  PAM length read from the partition header (> 0).
    * @param source_path   Originating @c .bin path, retained for diagnostics.
    *
    * @throws std::invalid_argument if @p nodes is empty or
-   *         @p guide_length <= 0.
+   *         @p guide_length <= 0 or @p pam_limit <= 0.
    */
   LoadedTST(std::vector<TSTNode> nodes, std::vector<TSTLeaf> leaves,
-            int guide_length, std::string source_path);
+            int guide_length, int pam_limit, std::string source_path);
 
   /** @return The TST node pool (root at index 0). */
   [[nodiscard]] const std::vector<TSTNode> &nodes() const noexcept {
@@ -88,10 +89,14 @@ public:
     return leaves_.size();
   }
 
+  /** @return PAM length recorded in the partition header (> 0). */
+  [[nodiscard]] int pam_limit() const noexcept { return pam_limit_; }
+
 private:
   std::vector<TSTNode> nodes_;
   std::vector<TSTLeaf> leaves_;
   int guide_length_;
+  int pam_limit_;
   std::string source_path_;
 };
 
@@ -161,6 +166,35 @@ struct SearchResult {
 };
 
 // =========================================================================
+// BulgeMode  (placed before TSTSearcher)
+// =========================================================================
+
+/**
+ * @brief Governs whether one off-target alignment may combine the two bulge
+ *        kinds.
+ *
+ * A DNA bulge is an extra base in the genomic target (gap in the guide); an
+ * RNA bulge is an extra base in the guide (gap in the target). This flag
+ * bounds how the two may co-occur *within a single alignment*; the per-kind
+ * budgets (SearchConfiguration::max_bulges_dna/rna) still apply on top.
+ *
+ *  - @c MixedBulges (default): a hit may contain both DNA and RNA bulges at
+ *    once, each up to its budget. Historical behaviour ("both").
+ *  - @c SingleBulgeType: a hit may use only one kind — DNA bulges or RNA
+ *    bulges, never both in the same target ("single"). Mismatches are
+ *    unaffected and combine freely with either.
+ */
+enum class BulgeMode { MixedBulges, SingleBulgeType };
+
+/**
+ * @brief Parse a CLI/Python token into a BulgeMode.
+ * @param s  "mixed" (or legacy "both") | "single".
+ * @return   Corresponding BulgeMode.
+ * @throws std::invalid_argument on any other value.
+ */
+[[nodiscard]] BulgeMode bulge_mode_from_string(std::string_view s);
+
+// =========================================================================
 // TSTSearcher
 // =========================================================================
 
@@ -205,11 +239,15 @@ public:
    *                   Resolved by the Python layer from the partition
    *                   filename and passed down, so results need no
    *                   post-hoc chromosome fixup.
+   * @param pam        Input PAM motif.
+   * @param pam_at_start Flag indicating whether the PAM occurs before of after
+   *                     the target sequence.
+   * @param bulge_mode  see @c BulgeMode
    */
-  [[nodiscard]] std::vector<OffTarget> search(const LoadedTST &tst,
-                                              std::string_view guide_seq,
-                                              const std::string &chrom) const;
-
+  [[nodiscard]] std::vector<OffTarget>
+  search(const LoadedTST &tst, std::string_view guide_seq,
+        const std::string &chrom, const std::string &pam, bool pam_at_start,
+        BulgeMode bulge_mode = BulgeMode::MixedBulges) const;
   /**
    * @brief Search one loaded partition for many guides.
    *
@@ -217,16 +255,21 @@ public:
    * the results. The returned @c SearchResult is indexed in lockstep with
    * @p guides.
    *
-   * @param tst     The loaded, read-only index to search.
-   * @param guides  Query guides in canonical orientation.
-   * @param chrom   Chromosome name recorded in every emitted OffTarget.
-   * @return        Per-guide hit lists plus partition provenance.
+   * @param tst          The loaded, read-only index to search.
+   * @param guides       Query guides in canonical orientation.
+   * @param chrom        Chromosome name recorded in every emitted OffTarget.
+   * @param pam          Input PAM motif.
+   * @param pam_at_start Flag indicating whether the PAM occurs before of after
+   *                     the target sequence.
+   * @param bulge_mode   see @c BulgeMode
+   * @return             Per-guide hit lists plus partition provenance.
    *
    * @throws std::invalid_argument under the same conditions as @c search().
    */
-  [[nodiscard]] SearchResult search_all(const LoadedTST &tst,
-                                        const std::vector<std::string> &guides,
-                                        const std::string &chrom) const;
+  [[nodiscard]] SearchResult
+  search_all(const LoadedTST &tst, const std::vector<std::string> &guides,
+            const std::string &chrom, const std::string &pam, bool pam_at_start,
+            BulgeMode bulge_mode = BulgeMode::MixedBulges) const;
 
   /** @return The configuration this searcher was constructed with. */
   [[nodiscard]] const SearchConfiguration &config() const noexcept {
@@ -265,6 +308,10 @@ private:
  *                        partition filename) recorded in every OffTarget.
  * @param guides          Query guides in canonical orientation.
  * @param config          Validated search parameters.
+ * @param pam             Input PAM motif.
+ * @param pam_at_start    Flag indicating whether the PAM occurs before of after
+ *                        the target sequence.
+ * @param bulge_mode      see @c BulgeMode
  * @return                Per-guide hit lists plus partition provenance.
  *
  * @throws std::runtime_error    if the partition cannot be loaded.
@@ -274,6 +321,8 @@ private:
 [[nodiscard]] SearchResult
 search_partition(const std::string &partition_path, const std::string &chrom,
                  const std::vector<std::string> &guides,
-                 const SearchConfiguration &config);
+                 const SearchConfiguration &config, const std::string &pam,
+                 bool pam_at_start,
+                 BulgeMode bulge_mode = BulgeMode::MixedBulges);
 
 } // namespace crispritz

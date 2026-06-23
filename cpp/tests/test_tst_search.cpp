@@ -248,10 +248,15 @@ struct Builder {
   // pam-width derivation, so the filename must start "<pam>_".
   void write(const std::string &path) const {
     std::ofstream out(path, std::ios::out | std::ios::binary);
+    const std::uint32_t magic = TST_BIN_MAGIC;
+    const std::uint32_t version = TST_BIN_VERSION;
+    out.write(reinterpret_cast<const char *>(&magic), sizeof(magic));
+    out.write(reinterpret_cast<const char *>(&version), sizeof(version));
     const int chunk_size = static_cast<int>(leaves.size());
     out.write(reinterpret_cast<const char *>(&chunk_size), sizeof(int));
     out.write(reinterpret_cast<const char *>(&guide_length), sizeof(int));
-
+    out.write(reinterpret_cast<const char *>(&pam_limit), sizeof(int));
+    
     for (const TSTLeaf &leaf : leaves) {
       out.write(reinterpret_cast<const char *>(&leaf.guide_index), sizeof(int));
       out.write(reinterpret_cast<const char *>(leaf.pam_seq_enc.data()),

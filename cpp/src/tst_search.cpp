@@ -1,17 +1,3 @@
-/**
- * @file tst_search.cpp
- * @brief Search-stage algorithms: partition deserialization, bounded TST
- *        near-neighbour traversal with mismatch and bulge handling, and
- *        OffTarget result generation.
- *
- * Reuses the public TSTNode / TSTLeaf types and the encoding / nibble helpers
- * from tst.hpp / tst_utils.hpp. The TST *builder* (TernarySearchTree) is not
- * touched; this file only consumes the on-disk format it produces.
- *
- * Output writing is deliberately out of scope: this file produces OffTarget
- * objects in memory and stops there.
- */
-
 #include "tst_search.hpp"
 
 #include "tst_utils.hpp" // iupac::*, pack/unpack nibbles, sentinels, reverse_complement
@@ -22,8 +8,9 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <iostream>
 
-using namespace pam; // NucleotideEncoder::*
+// using namespace pam; // NucleotideEncoder::*
 
 namespace crispritz {
 
@@ -32,14 +19,17 @@ namespace crispritz {
 // =========================================================================
 
 LoadedTST::LoadedTST(std::vector<TSTNode> nodes, std::vector<TSTLeaf> leaves,
-                     int guide_length, std::string source_path)
+                     int guide_length, int pam_limit, std::string source_path)
     : nodes_(std::move(nodes)), leaves_(std::move(leaves)),
-      guide_length_(guide_length), source_path_(std::move(source_path)) {
+      guide_length_(guide_length), pam_limit_(pam_limit), source_path_(std::move(source_path)) {
   if (nodes_.empty())
     throw std::invalid_argument("LoadedTST: node pool must not be empty");
   if (guide_length_ <= 0)
     throw std::invalid_argument("LoadedTST: guide_length must be > 0, got " +
                                 std::to_string(guide_length_));
+  if (pam_limit_ <= 0)
+    throw std::invalid_argument("LoadedTST: pam_limit must be > 0, got " +
+                                std::to_string(pam_limit_));
 }
 
 // =========================================================================
@@ -47,43 +37,50 @@ LoadedTST::LoadedTST(std::vector<TSTNode> nodes, std::vector<TSTLeaf> leaves,
 // =========================================================================
 //
 // .bin layout (see TernarySearchTree::write_partition):
-//   [4 B]  chunk_size  (number of leaves)
+//   [4 B]  magic   (TST_BIN_MAGIC)
+//   [4 B]  version (TST_BIN_VERSION)
+//   [4 B]  chunk_size   (number of leaves)
 //   [4 B]  guide_length
+//   [4 B]  pam_limit    (PAM length; PAM byte width is ceil(pam_limit/2))
 //   for each leaf:
 //     [4 B]                 guide_index (signed)
-//     [ceil(pam_limit/2) B] bit-packed PAM nibbles      (length not stored!)
+//     [ceil(pam_limit/2) B] bit-packed PAM nibbles
 //     [1 B]                 '0'            -> next == 0
 //                           '_' + [4 B]    -> next index
 //   [4 B]  node_count
 //   [var]  nibble-packed node stream (pre-order: split, lo, hi, eq)
 //
-// The PAM byte count per leaf is ceil(pam_limit/2). pam_limit is not in the
-// header, but it is recoverable: the leaf section and node section are
-// both present, and the node stream is self-delimiting (node_count bounds
-// it). We therefore reconstruct pam byte width from the file name's PAM
-// token when available; when not, the caller supplies it. To keep the
-// loader self-contained and format-faithful, we read the PAM bytes using a
-// width derived from the on-disk node reconstruction is not possible —
-// instead we parse leaves by scanning for the '0'/'_' delimiter, which is
-// unambiguous because guide_index and any 4-byte next are fixed width and
-// the packed PAM contains no bytes equal to the delimiter only by chance.
-//
-// To avoid that fragility, load_partition takes the pam byte width as a
-// parameter via an internal helper; the public entry derives it from the
-// node stream position. For correctness and clarity we read the whole file
-// into memory and parse with explicit offsets, requiring pam_bytes to be
-// known. We obtain pam_bytes by a single backward pass: the node section
-// length is determined by node_count, letting us locate the leaf section
-// end and divide evenly. See parse below.
+// pam_limit now travels in the header, so the PAM byte width is read, not
+// guessed from the filename. Every read below is bounds-checked against the
+// end of the in-memory buffer, and node reconstruction is capped at the
+// header's node_count, so a corrupt or truncated partition raises a
+// descriptive std::runtime_error instead of walking off the buffer or
+// recursing into a stack overflow (which the OS reports as SIGBUS).
 // =========================================================================
 
 namespace {
 struct NibbleReader; // defined below
 void rebuild_children(NibbleReader &r, std::vector<TSTNode> &nodes,
-                      int self_idx);
+                      int self_idx, int max_nodes);
 
-/** @brief Read a little-endian int32 from @p p and advance the cursor. */
-int read_i32(const unsigned char *&p) {
+/** @brief Bounds-checked little-endian uint32 read; advances the cursor. */
+std::uint32_t read_u32(const unsigned char *&p, const unsigned char *end,
+                       const char *what) {
+  if (static_cast<std::size_t>(end - p) < sizeof(std::uint32_t))
+    throw std::runtime_error(
+        std::string("load_partition: truncated file while reading ") + what);
+  std::uint32_t v;
+  std::memcpy(&v, p, sizeof(v));
+  p += sizeof(v);
+  return v;
+}
+
+/** @brief Bounds-checked little-endian int32 read; advances the cursor. */
+int read_i32(const unsigned char *&p, const unsigned char *end,
+             const char *what) {
+  if (static_cast<std::size_t>(end - p) < sizeof(int))
+    throw std::runtime_error(
+        std::string("load_partition: truncated file while reading ") + what);
   int v;
   std::memcpy(&v, p, sizeof(int));
   p += sizeof(int);
@@ -91,38 +88,27 @@ int read_i32(const unsigned char *&p) {
 }
 
 /**
- * @brief Reconstruct the node pool from the nibble-packed pre-order stream.
+ * @brief Cursor over the nibble-packed node stream.
  *
- * Mirrors TernarySearchTree::serialize_node exactly, in reverse:
- * each node emits splitchar, then lokid subtree (or '0'), then hikid
- * subtree (or '0'), then eqkid subtree (or '_' + 4-byte leaf pointer).
- *
- * Characters are stored two nibbles per byte. The high nibble 0xF ('_')
- * signals a leaf pointer follows on a fresh byte boundary; 0x0 ('0')
- * signals an absent child.
- *
- * Returns the index of the node it created (appended to @p nodes), or a
- * negative leaf-pointer encoding when the position was a leaf reference.
- *
- * @param data        Whole-file byte buffer.
- * @param node_cursor Byte offset into the node section; advanced in place.
- * @param nibble_high True when the next nibble to consume is the high
- *                    half of the current byte; advanced in place.
- * @param nodes       Destination node pool (root ends up at index 0 only
- *                    if this is the first node created — the builder
- *                    guarantees pre-order from the root).
+ * Every access is bounds-checked against @c end, so a desynced or truncated
+ * stream throws instead of reading past the buffer.
  */
 struct NibbleReader {
   const unsigned char *data;
-  std::size_t pos;  // byte offset within node section
-  bool high = true; // next nibble is high half
+  const unsigned char *end;
+  std::size_t pos;  // byte offset within the buffer
+  bool high = true; // next nibble is the high half
 
-  explicit NibbleReader(const unsigned char *d, std::size_t start)
-      : data(d), pos(start) {}
+  NibbleReader(const unsigned char *d, std::size_t start,
+               const unsigned char *e)
+      : data(d), end(e), pos(start) {}
 
   uint8_t next_nibble() {
-    uint8_t byte = data[pos];
-    uint8_t nib = high ? high_nibble(byte) : low_nibble(byte);
+    if (data + pos >= end)
+      throw std::runtime_error("load_partition: node stream overran the file "
+                               "(corrupt or truncated partition)");
+    const uint8_t byte = data[pos];
+    const uint8_t nib = high ? high_nibble(byte) : low_nibble(byte);
     if (high) {
       high = false;
     } else {
@@ -132,7 +118,7 @@ struct NibbleReader {
     return nib;
   }
 
-  // Align to the next whole byte (used before reading a 4-byte leaf ptr).
+  /** @brief Align to the next whole byte (before reading a 4-byte ptr). */
   void align_byte() {
     if (!high) {
       high = true;
@@ -142,6 +128,9 @@ struct NibbleReader {
 
   int read_leaf_ptr() {
     align_byte();
+    if (static_cast<std::size_t>(end - (data + pos)) < sizeof(int))
+      throw std::runtime_error("load_partition: leaf pointer overran the file "
+                               "(corrupt or truncated partition)");
     int v;
     std::memcpy(&v, data + pos, sizeof(int));
     pos += sizeof(int);
@@ -149,119 +138,96 @@ struct NibbleReader {
   }
 };
 
-/**
- * @brief Recursively rebuild one node and its subtrees.
- * @return node index in @p nodes, or a negative leaf-pointer encoding.
- */
-int rebuild_node(NibbleReader &r, std::vector<TSTNode> &nodes) {
-  // Read splitchar nibble for this node.
-  uint8_t split_nib = r.next_nibble();
-  const int self_idx = static_cast<int>(nodes.size());
+/** @brief Append a node, but never exceed the count declared in the header. */
+int alloc_checked(std::vector<TSTNode> &nodes, int max_nodes) {
+  if (static_cast<int>(nodes.size()) >= max_nodes)
+    throw std::runtime_error("load_partition: node stream produced more nodes "
+                             "than the header declared (corrupt partition)");
+  const int idx = static_cast<int>(nodes.size());
   nodes.emplace_back();
-  nodes[self_idx].splitchar_enc = split_nib;
-  nodes[self_idx].splitchar = NucleotideEncoder::decode_genome(split_nib);
+  return idx;
+}
 
-  // lokid
-  {
-    // Peek the next nibble: 0x0 means absent child.
-    uint8_t nib = r.next_nibble();
+int rebuild_node(NibbleReader &r, std::vector<TSTNode> &nodes, int max_nodes) {
+  const uint8_t split_nib = r.next_nibble();
+  const int self_idx = alloc_checked(nodes, max_nodes);
+  nodes[self_idx].splitchar_enc = split_nib;
+  nodes[self_idx].splitchar = iupac::decode_genome(split_nib);
+
+  { // lokid
+    const uint8_t nib = r.next_nibble();
     if (nib == NULL_CHILD_NIBBLE) {
       nodes[self_idx].lokid = 0;
     } else {
-      // This nibble was actually the splitchar of the lokid node;
-      // rewind one nibble by re-injecting through a child rebuild.
-      // To keep things simple we re-create the child using this
-      // already-consumed nibble as its splitchar.
-      const int child = static_cast<int>(nodes.size());
-      nodes.emplace_back();
+      const int child = alloc_checked(nodes, max_nodes);
       nodes[child].splitchar_enc = nib;
-      nodes[child].splitchar = NucleotideEncoder::decode_genome(nib);
-      rebuild_children(r, nodes, child);
+      nodes[child].splitchar = iupac::decode_genome(nib);
+      rebuild_children(r, nodes, child, max_nodes);
       nodes[self_idx].lokid = child;
     }
   }
-
-  // hikid
-  {
-    uint8_t nib = r.next_nibble();
+  { // hikid
+    const uint8_t nib = r.next_nibble();
     if (nib == NULL_CHILD_NIBBLE) {
       nodes[self_idx].hikid = 0;
     } else {
-      const int child = static_cast<int>(nodes.size());
-      nodes.emplace_back();
+      const int child = alloc_checked(nodes, max_nodes);
       nodes[child].splitchar_enc = nib;
-      nodes[child].splitchar = NucleotideEncoder::decode_genome(nib);
-      rebuild_children(r, nodes, child);
+      nodes[child].splitchar = iupac::decode_genome(nib);
+      rebuild_children(r, nodes, child, max_nodes);
       nodes[self_idx].hikid = child;
     }
   }
-
-  // eqkid
-  {
-    uint8_t nib = r.next_nibble();
+  { // eqkid
+    const uint8_t nib = r.next_nibble();
     if (nib == SENTINEL_NIBBLE) {
-      // Leaf pointer follows on a byte boundary.
-      int leaf_ptr = r.read_leaf_ptr(); // negative: -(within_chunk+1)
-      nodes[self_idx].eqkid = leaf_ptr;
+      nodes[self_idx].eqkid = r.read_leaf_ptr();
     } else {
-      const int child = static_cast<int>(nodes.size());
-      nodes.emplace_back();
+      const int child = alloc_checked(nodes, max_nodes);
       nodes[child].splitchar_enc = nib;
-      nodes[child].splitchar = NucleotideEncoder::decode_genome(nib);
-      rebuild_children(r, nodes, child);
+      nodes[child].splitchar = iupac::decode_genome(nib);
+      rebuild_children(r, nodes, child, max_nodes);
       nodes[self_idx].eqkid = child;
     }
   }
-
   return self_idx;
 }
 
-/**
- * @brief Fill in lokid/hikid/eqkid for a node whose splitchar nibble was
- *        already consumed by the caller.
- *
- * Split out from rebuild_node so a child whose splitchar was peeked can
- * be completed without double-reading its splitchar.
- */
 void rebuild_children(NibbleReader &r, std::vector<TSTNode> &nodes,
-                      int self_idx) {
+                      int self_idx, int max_nodes) {
   // lokid
-  uint8_t lo = r.next_nibble();
+  const uint8_t lo = r.next_nibble();
   if (lo == NULL_CHILD_NIBBLE) {
     nodes[self_idx].lokid = 0;
   } else {
-    const int child = static_cast<int>(nodes.size());
-    nodes.emplace_back();
+    const int child = alloc_checked(nodes, max_nodes);
     nodes[child].splitchar_enc = lo;
-    nodes[child].splitchar = NucleotideEncoder::decode_genome(lo);
-    rebuild_children(r, nodes, child);
+    nodes[child].splitchar = iupac::decode_genome(lo);
+    rebuild_children(r, nodes, child, max_nodes);
     nodes[self_idx].lokid = child;
   }
 
   // hikid
-  uint8_t hi = r.next_nibble();
+  const uint8_t hi = r.next_nibble();
   if (hi == NULL_CHILD_NIBBLE) {
     nodes[self_idx].hikid = 0;
   } else {
-    const int child = static_cast<int>(nodes.size());
-    nodes.emplace_back();
+    const int child = alloc_checked(nodes, max_nodes);
     nodes[child].splitchar_enc = hi;
-    nodes[child].splitchar = NucleotideEncoder::decode_genome(hi);
-    rebuild_children(r, nodes, child);
+    nodes[child].splitchar = iupac::decode_genome(hi);
+    rebuild_children(r, nodes, child, max_nodes);
     nodes[self_idx].hikid = child;
   }
 
   // eqkid
-  uint8_t eq = r.next_nibble();
+  const uint8_t eq = r.next_nibble();
   if (eq == SENTINEL_NIBBLE) {
-    int leaf_ptr = r.read_leaf_ptr();
-    nodes[self_idx].eqkid = leaf_ptr;
+    nodes[self_idx].eqkid = r.read_leaf_ptr();
   } else {
-    const int child = static_cast<int>(nodes.size());
-    nodes.emplace_back();
+    const int child = alloc_checked(nodes, max_nodes);
     nodes[child].splitchar_enc = eq;
-    nodes[child].splitchar = NucleotideEncoder::decode_genome(eq);
-    rebuild_children(r, nodes, child);
+    nodes[child].splitchar = iupac::decode_genome(eq);
+    rebuild_children(r, nodes, child, max_nodes);
     nodes[self_idx].eqkid = child;
   }
 }
@@ -277,73 +243,65 @@ LoadedTST load_partition(const std::string &partition_path) {
                                  std::istreambuf_iterator<char>());
   in.close();
 
-  if (buf.size() < 8u)
+  if (buf.size() < 20u) // magic+version+chunk_size+guide_length+pam_limit
     throw std::runtime_error("load_partition: file too small: " +
                              partition_path);
 
   const unsigned char *p = buf.data();
-  const int chunk_size = read_i32(p);
-  const int guide_length = read_i32(p);
+  const unsigned char *const end = buf.data() + buf.size();
 
-  if (chunk_size < 0 || guide_length <= 0)
+  const std::uint32_t magic = read_u32(p, end, "magic");
+  if (magic != TST_BIN_MAGIC)
+    throw std::runtime_error(
+        "load_partition: " + partition_path +
+        " is not a CRISPRitz-plus index (bad magic). Rebuild the index with "
+        "the current index-genome.");
+
+  const std::uint32_t version = read_u32(p, end, "version");
+  if (version != TST_BIN_VERSION)
+    throw std::runtime_error(
+        "load_partition: " + partition_path + " uses index format v" +
+        std::to_string(version) + " but this build expects v" +
+        std::to_string(TST_BIN_VERSION) + ". Rebuild the index.");
+
+  const int chunk_size = read_i32(p, end, "chunk_size");
+  const int guide_length = read_i32(p, end, "guide_length");
+  const int pam_limit = read_i32(p, end, "pam_limit");
+
+  if (chunk_size < 0 || guide_length <= 0 || pam_limit <= 0)
     throw std::runtime_error("load_partition: invalid header in " +
                              partition_path);
 
+  const int pam_bytes = (pam_limit + 1) / 2; // ceil(pam_limit / 2)
+
   // --- leaf section -----------------------------------------------------
-  // PAM byte width is ceil(pam_limit/2). pam_limit is not in the header.
-  // We recover it by locating the node-count word: walk leaves using the
-  // self-delimiting '0'/'_' marker. Each leaf is:
-  //   guide_index(4) + pam_bytes(W) + marker(1) [+ next(4) if '_']
-  // W is constant across all leaves in a partition, so we infer it from
-  // the FIRST leaf by trying widths until the post-leaf node_count word
-  // produces a self-consistent parse. In practice the Python layer knows
-  // pam_limit and the binding passes it; here we infer conservatively.
-  //
-  // Simplest robust approach: the leaf section is parsed once W is known.
-  // We determine W by reading the node_count from the tail is not possible
-  // without W. Therefore load_partition reconstructs W from the PAM token
-  // embedded in the filename (<pam>_<chr>_<part>.bin) when present.
-
-  // Derive pam_bytes from the filename's leading PAM token.
-  auto derive_pam_bytes = [](const std::string &path) -> int {
-    // basename
-    std::size_t slash = path.find_last_of("/\\");
-    std::string base =
-        (slash == std::string::npos) ? path : path.substr(slash + 1);
-    std::size_t us = base.find('_');
-    if (us == std::string::npos || us == 0)
-      return -1;
-    const int pam_limit = static_cast<int>(us); // PAM token length
-    return (pam_limit + 1) / 2;                 // ceil(pam_limit/2)
-  };
-
-  const int pam_bytes = derive_pam_bytes(partition_path);
-  if (pam_bytes < 0)
-    throw std::runtime_error(
-        "load_partition: cannot derive PAM width from filename: " +
-        partition_path);
-
   std::vector<TSTLeaf> leaves;
   leaves.reserve(static_cast<std::size_t>(chunk_size));
 
   for (int i = 0; i < chunk_size; ++i) {
     TSTLeaf leaf;
-    leaf.guide_index = read_i32(p);
+    leaf.guide_index = read_i32(p, end, "leaf.guide_index");
 
+    if (static_cast<std::size_t>(end - p) < static_cast<std::size_t>(pam_bytes))
+      throw std::runtime_error("load_partition: truncated PAM bytes in " +
+                               partition_path);
     leaf.pam_seq_enc.assign(p, p + pam_bytes);
     p += pam_bytes;
 
-    unsigned char marker = *p++;
-    if (marker == static_cast<unsigned char>('_')) {
-      leaf.next = read_i32(p);
-    } else {
+    if (p >= end)
+      throw std::runtime_error("load_partition: truncated leaf marker in " +
+                               partition_path);
+    const unsigned char marker = *p++;
+    if (marker == static_cast<unsigned char>('_'))
+      leaf.next = read_i32(p, end, "leaf.next");
+    else
       leaf.next = 0; // marker == '0'
-    }
+
     leaves.push_back(std::move(leaf));
   }
 
   // --- node section -----------------------------------------------------
-  const int node_count = read_i32(p);
+  const int node_count = read_i32(p, end, "node_count");
   if (node_count < 0)
     throw std::runtime_error("load_partition: negative node_count in " +
                              partition_path);
@@ -353,8 +311,8 @@ LoadedTST load_partition(const std::string &partition_path) {
 
   if (node_count > 0) {
     const std::size_t node_start = static_cast<std::size_t>(p - buf.data());
-    NibbleReader reader(buf.data(), node_start);
-    rebuild_node(reader, nodes);
+    NibbleReader reader(buf.data(), node_start, end);
+    rebuild_node(reader, nodes, node_count);
   } else {
     // Degenerate but valid: a single sentinel root so LoadedTST's
     // invariant (non-empty pool) holds.
@@ -362,7 +320,7 @@ LoadedTST load_partition(const std::string &partition_path) {
   }
 
   return LoadedTST{std::move(nodes), std::move(leaves), guide_length,
-                   partition_path};
+                   pam_limit, partition_path}; 
 }
 
 // =========================================================================
@@ -396,6 +354,8 @@ struct Frame {
   std::size_t guide_pos;  // next index into the query guide
   std::string aln_guide;  // aligned guide chars accumulated so far
   std::string aln_target; // aligned target chars accumulated so far
+  bool dna_bulge_used = false;   // DNA bulge was opened on this path
+  bool rna_bulge_used = false;   // RNA bulge was opened on this path
 };
 
 /** @brief Bundle of read-only context shared across the recursion. */
@@ -404,6 +364,7 @@ struct Context {
   std::string_view guide; // full query guide
   int guide_len;          // guide.size()
   std::string_view chrom; // chromosome name for emitted hits
+  BulgeMode bulge_mode = BulgeMode::MixedBulges;
   Strand strand_for_index(int guide_index) const {
     return guide_index >= 0 ? Strand::Forward : Strand::Reverse;
   }
@@ -411,7 +372,39 @@ struct Context {
 
 // Forward declaration: the traversal recurses through three node slots.
 void traverse(const Context &ctx, int node_idx, Frame frame,
-              std::vector<OffTarget> &out);
+              std::vector<OffTarget> &out, const std::string &pam, bool pam_at_start);
+
+/**
+ * @brief Decode a bit-packed PAM (TSTLeaf::pam_seq_enc) into nucleotides.
+ *
+ * Exact inverse of TernarySearchTree::encode_pam_bytes: two 4-bit IUPAC codes
+ * per byte, high nibble first, decoded via iupac::decode_genome. The result
+ * is returned in *storage order* (the order the builder packed it); recovering
+ * genomic 5'->3' orientation depends on strand and PAM placement and is left
+ * to the caller (see emit_leaf_chain).
+ *
+ * @param enc        Packed PAM bytes; must hold >= ceil(pam_limit/2) bytes.
+ * @param pam_limit  Number of PAM nucleotides to decode (> 0).
+ * @return           Decoded nucleotide string of length @p pam_limit.
+ * @throws std::runtime_error if @p enc is too short for @p pam_limit.
+ * @complexity O(pam_limit).
+ */
+std::string decode_pam(const std::vector<uint8_t> &enc, int pam_limit) {
+  if (pam_limit <= 0)
+    return {};
+  const std::size_t need = static_cast<std::size_t>((pam_limit + 1) / 2);
+  if (enc.size() < need)
+    throw std::runtime_error(
+        "decode_pam: encoded PAM shorter than index pam_limit");
+  std::string out;
+  out.reserve(static_cast<std::size_t>(pam_limit));
+  for (int i = 0; i < pam_limit; ++i) {
+    const uint8_t byte = enc[static_cast<std::size_t>(i) >> 1];
+    const uint8_t nib = (i & 1) ? low_nibble(byte) : high_nibble(byte);
+    out.push_back(iupac::decode_genome(nib));
+  }
+  return out;
+}
 
 /**
  * @brief Emit OffTargets for the leaf chain rooted at @p leaf_ptr.
@@ -422,7 +415,8 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
  * counts; only their genomic position/strand differ.
  */
 void emit_leaf_chain(const Context &ctx, int leaf_ptr, const Frame &frame,
-                     std::vector<OffTarget> &out) {
+                     std::vector<OffTarget> &out, const std::string &pam, bool pam_at_start) {
+
   const auto &leaves = ctx.tst->leaves();
   int idx = -leaf_ptr - 1; // decode within-chunk leaf index
 
@@ -454,12 +448,51 @@ void emit_leaf_chain(const Context &ctx, int leaf_ptr, const Frame &frame,
         ++mm_count; // lowercase = mismatch
     }
 
+    std::string aln_guide = static_cast<std::string>(frame.aln_guide);
+    std::string aln_target = static_cast<std::string>(frame.aln_target);
+
+    // Index stores PAM-at-end guide/target in 3'->5' (reversed) order; flip
+    // the alignment back to genomic 5'->3' for output.
+    if (!pam_at_start) {
+      std::reverse(aln_guide.begin(), aln_guide.end());
+      std::reverse(aln_target.begin(), aln_target.end());
+    }
+
+    // Decode the ACTUAL genomic PAM and re-orient to 5'->3'. encode_pam_bytes
+    // stores the PAM reversed in every case EXCEPT reverse-strand + PAM-at-end
+    // (see extract_forward / extract_reverse), so undo exactly that reversal.
+    std::string pam_target = decode_pam(leaf.pam_seq_enc, ctx.tst->pam_limit());
+    const bool pam_stored_reversed =
+        (strand == Strand::Forward) || pam_at_start;
+    if (pam_stored_reversed)
+      std::reverse(pam_target.begin(), pam_target.end());
+
+    // Guide carries the PAM *motif* (e.g. "NGG"); target carries the decoded
+    // actual PAM bases at this genomic site.
+    if (!pam_at_start) {
+      aln_guide  += pam;
+      aln_target += pam_target;
+    } else {
+      aln_guide  = pam + aln_guide;
+      aln_target = pam_target + aln_target;
+    }
+
+    // Adjust target position according to strand orientation and PAM
+    int pos_t = pos;
+    if (!pam_at_start && strand == Strand::Forward) {
+      pos_t = pos_t - (aln_target.size() - brna_count) + 1;
+    } else if (pam_at_start && strand == Strand::Forward)
+    {
+      pos_t = pos_t - (aln_target.size() - brna_count) + 1;
+    }
+    
+
     out.emplace_back(
         /*chrom  */ std::string(ctx.chrom),
-        /*pos    */ pos,
+        /*pos    */ pos_t,
         /*strand */ strand,
-        /*grna   */ frame.aln_guide,
-        /*target */ frame.aln_target,
+        /*grna   */ aln_guide,
+        /*target */ aln_target,
         /*mm     */ mm_count,
         /*bdna   */ bdna_count,
         /*brna   */ brna_count);
@@ -474,8 +507,26 @@ void emit_leaf_chain(const Context &ctx, int leaf_ptr, const Frame &frame,
   }
 }
 
+// Mirrors legacy saveIndices: collect every leaf below node_idx, emitting
+// the alignment accumulated so far. The suffix bases below this node are
+// not part of the guide match, so the alignment strings are NOT extended.
+void harvest(const Context &ctx, int node_idx, const Frame &frame,
+             std::vector<OffTarget> &out, const std::string &pam, bool pam_at_start) {
+  if (node_idx <= 0 || node_idx >= (int)ctx.tst->nodes().size()) 
+    return;
+  const TSTNode &n = ctx.tst->nodes()[(std::size_t)node_idx];
+  if (n.lokid > 0) 
+    harvest(ctx, n.lokid, frame, out, pam, pam_at_start);
+  if (n.hikid > 0) 
+    harvest(ctx, n.hikid, frame, out, pam, pam_at_start);
+  if (n.eqkid < 0)      
+    emit_leaf_chain(ctx, n.eqkid, frame, out, pam, pam_at_start);
+  else if (n.eqkid > 0) 
+    harvest(ctx, n.eqkid, frame, out, pam, pam_at_start);
+}
+
 void traverse(const Context &ctx, int node_idx, Frame frame,
-              std::vector<OffTarget> &out) {
+              std::vector<OffTarget> &out, const std::string &pam, bool pam_at_start) {
   if (node_idx < 0 || node_idx >= static_cast<int>(ctx.tst->nodes().size()))
     return;
 
@@ -488,66 +539,74 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
 
   if (is_root_sentinel) {
     if (node.eqkid < 0)
-      emit_leaf_chain(ctx, node.eqkid, frame, out);
+      emit_leaf_chain(ctx, node.eqkid, frame, out, pam, pam_at_start);
     else if (node.eqkid > 0)
-      traverse(ctx, node.eqkid, frame, out);
+      traverse(ctx, node.eqkid, frame, out, pam, pam_at_start);
     return;
   }
 
-  // If the query is exhausted we cannot consume this splitchar by a
-  // match or mismatch; only an RNA bulge (gap in target) could apply,
-  // but that is handled when we still have guide characters. So stop.
-  if (frame.guide_pos >= static_cast<std::size_t>(ctx.guide_len))
-    return;
+  // alternative splitchars at this depth — no guide consumed
+  if (node.lokid > 0) 
+    traverse(ctx, node.lokid, frame, out, pam, pam_at_start);
+  if (node.hikid > 0) 
+    traverse(ctx, node.hikid, frame, out, pam, pam_at_start);
 
-  const char q_char = ctx.guide[frame.guide_pos];
+  // GUIDE EXHAUSTED -> harvest leaves in this subtree (was: return)
+  if (frame.guide_pos >= static_cast<std::size_t>(ctx.guide_len)) {
+    if (node.eqkid < 0)      
+      emit_leaf_chain(ctx, node.eqkid, frame, out, pam, pam_at_start);
+    else if (node.eqkid > 0) 
+      harvest(ctx, node.eqkid, frame, out, pam, pam_at_start);
+    return;
+  }
+
+  // Not exhausted: read the query base. Index stores guides reversed
+  // (PAM-at-end), so consume the query from the 3' end inward
+  const int gpos = ctx.guide_len - 1 - static_cast<int>(frame.guide_pos);
+  const char q_char  = ctx.guide[static_cast<size_t>(gpos)];
   const uint8_t q_enc = iupac::encode_genome(q_char);
   const bool is_match = iupac::matches(q_enc, node.splitchar_enc);
-
-  // ---- lokid / hikid : explore alternative splitchars at this depth.
-  //      No budget is consumed; these do not advance the guide.
-  if (node.lokid > 0)
-    traverse(ctx, node.lokid, frame, out);
-  if (node.hikid > 0)
-    traverse(ctx, node.hikid, frame, out);
-
-  // ---- equal branch: consume this splitchar against the query char.
   const char node_char = node.splitchar;
 
+  // step into the equal child; emit directly only if it's a terminal AND
+  // this step just exhausted the guide (handles a max_bulges_==0 index too)
+  auto step_eq = [&](Frame nx) {
+    if (node.eqkid > 0)
+      traverse(ctx, node.eqkid, std::move(nx), out, pam, pam_at_start);
+    else if (node.eqkid < 0 && nx.guide_pos >= static_cast<std::size_t>(ctx.guide_len))
+      emit_leaf_chain(ctx, node.eqkid, nx, out, pam, pam_at_start);
+  };
+
   if (is_match) {
-    Frame next = frame;
-    next.aln_guide += node_char;
-    next.aln_target += node_char; // uppercase = match
-    next.guide_pos += 1;
-    if (node.eqkid < 0)
-      emit_leaf_chain(ctx, node.eqkid, next, out);
-    else if (node.eqkid > 0)
-      traverse(ctx, node.eqkid, next, out);
+    Frame nx = frame; 
+    nx.aln_guide += node_char; 
+    nx.aln_target += node_char; 
+    nx.guide_pos++;
+    step_eq(std::move(nx));
   } else if (frame.mm_left > 0) {
-    Frame next = frame;
-    next.mm_left -= 1;
-    next.aln_guide += q_char;             // query base (upper)
-    next.aln_target += static_cast<char>( // genome base (lower)
+    Frame nx = frame; 
+    nx.mm_left--; 
+    nx.aln_guide += q_char;// query base (upper)
+    nx.aln_target += static_cast<char>( // genome base (lower)
         node_char >= 'A' && node_char <= 'Z' ? node_char - 'A' + 'a'
                                              : node_char);
-    next.guide_pos += 1;
-    if (node.eqkid < 0)
-      emit_leaf_chain(ctx, node.eqkid, next, out);
-    else if (node.eqkid > 0)
-      traverse(ctx, node.eqkid, next, out);
+    nx.guide_pos++;
+    step_eq(std::move(nx));
   }
 
   // ---- DNA bulge: extra base in the genome/target, gap in the guide.
   //      Consume this node's splitchar into the target, advance the
   //      node (eqkid) but NOT the guide position.
-  if (frame.bdna_left > 0) {
-    Frame next = frame;
-    next.bdna_left -= 1;
-    next.aln_guide += '-';        // gap in guide
-    next.aln_target += node_char; // extra genomic base
+  if (frame.bdna_left > 0 &&
+      !(ctx.bulge_mode == BulgeMode::SingleBulgeType && frame.rna_bulge_used)) {
+    Frame nx = frame; 
+    nx.bdna_left--; 
+    nx.dna_bulge_used = true;
+    nx.aln_guide += '-';        // gap in guide
+    nx.aln_target += node_char; // extra genomic base
     // guide_pos unchanged
-    if (node.eqkid > 0)
-      traverse(ctx, node.eqkid, next, out);
+    if (node.eqkid > 0) 
+      traverse(ctx, node.eqkid, std::move(nx), out, pam, pam_at_start);
     // (a DNA bulge cannot land exactly on a leaf terminal without a
     //  following matched base, so we do not emit on eqkid < 0 here)
   }
@@ -555,13 +614,15 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
   // ---- RNA bulge: extra base in the guide, gap in the genome/target.
   //      Consume a guide character into the alignment as a gap on the
   //      target side, advance the guide but stay on the same node.
-  if (frame.brna_left > 0) {
-    Frame next = frame;
-    next.brna_left -= 1;
-    next.aln_guide += q_char; // extra guide base
-    next.aln_target += '-';   // gap in target
-    next.guide_pos += 1;
-    traverse(ctx, node_idx, next, out); // same node, advanced guide
+  if (frame.brna_left > 0 &&
+      !(ctx.bulge_mode == BulgeMode::SingleBulgeType && frame.dna_bulge_used)) {
+    Frame nx = frame; 
+    nx.brna_left--; 
+    nx.rna_bulge_used = true;
+    nx.aln_guide += q_char; // extra guide base
+    nx.aln_target += '-';   // gap in target
+    nx.guide_pos++;
+    traverse(ctx, node_idx, std::move(nx), out, pam, pam_at_start); // same node, advanced guide
   }
 }
 
@@ -569,7 +630,10 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
 
 std::vector<OffTarget> TSTSearcher::search(const LoadedTST &tst,
                                            std::string_view guide_seq,
-                                           const std::string &chrom) const {
+                                           const std::string &chrom,
+                                           const std::string &pam,
+                                           bool pam_at_start,
+                                           BulgeMode bulge_mode) const {  
   // Deferred guide-length / edit-budget validation (see header contract).
   if (config_.max_total_edits() > tst.guide_length())
     throw std::invalid_argument("TSTSearcher::search: max_total_edits (" +
@@ -583,31 +647,34 @@ std::vector<OffTarget> TSTSearcher::search(const LoadedTST &tst,
                                 ") does not match index guide_length (" +
                                 std::to_string(tst.guide_length()) + ')');
 
-  std::vector<OffTarget> out;
-
   Context ctx;
   ctx.tst = &tst;
   ctx.guide = guide_seq;
   ctx.guide_len = static_cast<int>(guide_seq.size());
   ctx.chrom = chrom;
+  ctx.bulge_mode = bulge_mode; 
 
   Frame root;
   root.mm_left = config_.max_mismatches();
   root.bdna_left = config_.max_bulges_dna();
   root.brna_left = config_.max_bulges_rna();
   root.guide_pos = 0;
+   // dna_bulge_used / rna_bulge_used default to false
   root.aln_guide.reserve(
       static_cast<std::size_t>(ctx.guide_len + config_.max_bulges_total()));
   root.aln_target.reserve(
       static_cast<std::size_t>(ctx.guide_len + config_.max_bulges_total()));
 
-  traverse(ctx, /*root index*/ 0, std::move(root), out);
+  std::vector<OffTarget> out;
+  traverse(ctx, /*root index*/ 0, std::move(root), out, pam, pam_at_start);
   return out;
 }
 
 SearchResult TSTSearcher::search_all(const LoadedTST &tst,
                                      const std::vector<std::string> &guides,
-                                     const std::string &chrom) const {
+                                     const std::string &chrom,
+                                     const std::string &pam, bool pam_at_start,
+                                     BulgeMode bulge_mode) const {
   SearchResult result;
   result.source_path = tst.source_path();
   result.hits_by_guide.reserve(guides.size());
@@ -628,7 +695,7 @@ SearchResult TSTSearcher::search_all(const LoadedTST &tst,
   // performance. Keeping this serial is the correct design, not an
   // oversight.
   for (const std::string &g : guides)
-    result.hits_by_guide.push_back(search(tst, g, chrom));
+    result.hits_by_guide.push_back(search(tst, g, chrom, pam, pam_at_start, bulge_mode));
 
   return result;
 }
@@ -640,10 +707,12 @@ SearchResult TSTSearcher::search_all(const LoadedTST &tst,
 SearchResult search_partition(const std::string &partition_path,
                               const std::string &chrom,
                               const std::vector<std::string> &guides,
-                              const SearchConfiguration &config) {
+                              const SearchConfiguration &config,
+                              const std::string &pam, bool pam_at_start,
+                              BulgeMode bulge_mode) {
   LoadedTST tst = load_partition(partition_path);
   TSTSearcher searcher(config);
-  return searcher.search_all(tst, guides, chrom);
+  return searcher.search_all(tst, guides, chrom, pam, pam_at_start, bulge_mode);
 }
 
 } // namespace crispritz

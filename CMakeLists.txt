@@ -59,7 +59,6 @@ set(CRISPRITZ_COMPILE_FLAGS
     $<$<AND:$<CXX_COMPILER_ID:GNU,Clang,AppleClang>,$<CONFIG:Debug>>:
         -O0
         -g3
-        -fsanitize=address,undefined
     >
 
     # MSVC equivalents (Windows CI)

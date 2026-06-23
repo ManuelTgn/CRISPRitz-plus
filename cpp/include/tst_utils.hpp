@@ -10,6 +10,13 @@
 
 namespace crispritz {
 
+// --- On-disk partition format identification -------------------------------
+// A self-describing header lets the loader reject foreign/old/corrupt files
+// up front instead of silently mis-parsing them. Bump TST_BIN_VERSION whenever
+// the byte layout changes.
+inline constexpr std::uint32_t TST_BIN_MAGIC   = 0x505A5243u; // "CRZP" (LE)
+inline constexpr std::uint32_t TST_BIN_VERSION = 1u;
+
 /**
  * @brief 4-bit IUPAC nucleotide encoding used throughout TST construction.
  *
@@ -34,6 +41,10 @@ constexpr uint8_t encode_genome(char c) noexcept {
 
 constexpr uint8_t encode_pam(char c) noexcept {
   return NucleotideEncoder::encode_genome(c);
+}
+
+constexpr uint8_t decode_genome(char c) noexcept {
+  return NucleotideEncoder::decode_genome(c);
 }
 
 constexpr char complement(char c) noexcept {

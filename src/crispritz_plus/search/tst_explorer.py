@@ -77,7 +77,7 @@ def _search_parallel(
                 partition,
                 _contig_from_partition(partition, debug),
                 guides,
-                config.native,
+                config,
                 pam.size,
                 pam.upstream,
                 shard,

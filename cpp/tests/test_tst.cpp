@@ -16,6 +16,7 @@
  */
 
 #include "nucleotide_encoding.hpp"
+#include "tst_utils.hpp" // crispritz::TST_BIN_MAGIC / TST_BIN_VERSION
 #include "tst.hpp"
 
 #include <algorithm>
@@ -88,21 +89,38 @@ static void cleanup_bin_files(const std::string &pam_seq,
 }
 
 /**
- * @brief Read the first two int32 values from a .bin file:
- *        [0] = num_leaves, [1] = guide_length.
- * @throws std::runtime_error if the file is too small.
+ * @brief Read the partition header and return {num_leaves, guide_length}.
+ *
+ * Current self-describing layout (see TernarySearchTree::write_partition):
+ *   [u32] magic, [u32] version, [i32] num_leaves, [i32] guide_length,
+ *   [i32] pam_limit, ...
+ * Magic and version are validated here so any future format drift fails
+ * loudly instead of silently returning the wrong field (which is exactly
+ * what produced the stored=1 failures before this fix).
+ *
+ * @throws std::runtime_error if the file is too small or is not a
+ *         current-format CRISPRitz-plus partition.
  */
 static std::pair<int32_t, int32_t> read_bin_header(const fs::path &path) {
   std::ifstream fin(path, std::ios::binary);
   if (!fin.is_open())
     throw std::runtime_error("Cannot open: " + path.string());
 
+  std::uint32_t magic = 0, version = 0;
   int32_t num_leaves = 0, guide_length = 0;
+  fin.read(reinterpret_cast<char *>(&magic), sizeof(magic));
+  fin.read(reinterpret_cast<char *>(&version), sizeof(version));
   fin.read(reinterpret_cast<char *>(&num_leaves), sizeof(int32_t));
   fin.read(reinterpret_cast<char *>(&guide_length), sizeof(int32_t));
 
   if (!fin)
     throw std::runtime_error("File too small to contain header: " +
+                             path.string());
+  if (magic != crispritz::TST_BIN_MAGIC)
+    throw std::runtime_error("Not a CRISPRitz+ partition (bad magic): " +
+                             path.string());
+  if (version != crispritz::TST_BIN_VERSION)
+    throw std::runtime_error("Unexpected index format version in: " +
                              path.string());
   return {num_leaves, guide_length};
 }

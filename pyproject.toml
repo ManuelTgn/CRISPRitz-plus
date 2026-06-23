@@ -81,7 +81,6 @@ build.targets = [
     "test_offtarget", 
     "test_output_writer",
     "test_tst_search",
-    "my_test",
 ]
 
 [tool.scikit-build.cmake]

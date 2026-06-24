@@ -1,1 +1,1 @@
-# CRISPRitz-plus
+# CRISPRitz+

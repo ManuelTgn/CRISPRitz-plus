@@ -37,6 +37,7 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
   "colorama==0.4.6",
+  "pytest==8.3.4",
   "pysam==0.22.1",
   "tqdm==4.67.1",
 ]

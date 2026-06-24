@@ -16,20 +16,29 @@ The scorer only reads columns 3 (``grna``) and 4 (``spacer``) and writes column
 9 (``cfd_score``); every other field is passed through untouched.
 """
 
-import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List, Optional, Tuple
 
+import os
+
+
 from .cfd import compute_cfd, load_mismatch_pam_scores
 
-# --- Shard column contract (keep in sync with the C++ writer) ----------------
+# --- Shard column contract (keep in sync with the C++ writer) -----------------
 GRNA_COL: int = 3
 SPACER_COL: int = 4
 CFD_COL: int = 9
 N_COLS: int = 10
 _SCORE_NA: str = "NA"
 
-# --- Per-process model cache, populated by _init_worker() --------------------
+# CFD (Doench 2016) is SpCas9-specific: a 20 nt guide body scored per-position
+# against the 20 nt protospacer, plus a separate score for the PAM dinucleotide
+# at PAM positions 2-3. The shard's grna/spacer columns carry the trailing
+# 3 nt PAM, which must be removed from the body before the per-position walk.
+_PAM_LEN: int = 3  # NGG
+_PAM_DINT_LEN: int = 2  # the "GG" positions scored by pamscores
+
+# --- Per-process model cache, populated by _init_worker() ---------------------
 _MMSCORES: Optional[dict] = None
 _PAMSCORES: Optional[dict] = None
 
@@ -95,10 +104,15 @@ def score_shard_file(shard_path: str, debug: bool = False) -> int:
             # pad to the canonical width so column 9 always exists.
             if len(fields) < N_COLS:
                 fields += [_SCORE_NA] * (N_COLS - len(fields))
+            grna = fields[GRNA_COL]
             spacer = fields[SPACER_COL]
-            score = compute_cfd(
-                fields[GRNA_COL], spacer, spacer[-2:], mmscores, pamscores
-            )
+            # Strip the trailing PAM from both the guide and the target so the
+            # per-position mismatch walk sees only the 20 nt bodies; score the
+            # PAM separately via its dinucleotide taken from the target.
+            pam_dinuc = spacer[-_PAM_DINT_LEN:]
+            grna_body = grna[:-_PAM_LEN]
+            spacer_body = spacer[:-_PAM_LEN]
+            score = compute_cfd(grna_body, spacer_body, pam_dinuc, mmscores, pamscores)
             fields[CFD_COL] = f"{score:.2f}"
             fout.write("\t".join(fields) + "\n")
             scored += 1
@@ -106,9 +120,7 @@ def score_shard_file(shard_path: str, debug: bool = False) -> int:
     return scored
 
 
-def score_shards(
-    shard_paths: List[str], threads: int, debug: bool = False
-) -> int:
+def score_shards(shard_paths: List[str], threads: int, debug: bool = False) -> int:
     """Score every shard concurrently — one process task per shard.
 
     Parameters
@@ -133,8 +145,7 @@ def score_shards(
         max_workers=workers, initializer=_init_worker, initargs=(debug,)
     ) as pool:
         futures = {
-            pool.submit(score_shard_file, path, debug): path
-            for path in shard_paths
+            pool.submit(score_shard_file, path, debug): path for path in shard_paths
         }
         for future in as_completed(futures):
             total += future.result()

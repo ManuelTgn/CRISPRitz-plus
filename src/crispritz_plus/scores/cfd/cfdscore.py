@@ -38,24 +38,65 @@ def compute_cfd(
     pam: str,
     mmscores: Dict[str, float],
     pamscores: Dict[str, float],
-) -> float:
-    score = 1.0  # initialize cfd score
-    wildtype, sg = dna2rna(wildtype), dna2rna(sg)  # convert to RNA sequences
-    i = 0
-    for ntsg in sg:
-        if wildtype[i].upper() == ntsg.upper():
-            score *= 1  # no mismatch, score unchanged
-            i += 1
-            continue
-        elif wildtype[i].upper() == "-" or ntsg.upper() == "-":  # handle bulges
-            score *= 1
-            i += 1
-            continue
-        # build mismatch dictionary key
-        key = (
-            f"r{wildtype[i].upper()}:d{reverse_complement(ntsg.upper())},{i + 1}"
+) -> float:  # sourcery skip: use-contextlib-suppress
+    """Cutting Frequency Determination (CFD) score for one guide/off-target pair.
+
+    The score is the product of per-position mismatch penalties (Doench et al.,
+    2016) and a PAM-dinucleotide penalty, so a perfect on-target match scores
+    ``1.0 * pamscores[pam]``. Matched positions and bulge gaps (``'-'``)
+    contribute a neutral factor of ``1.0``; the mismatch model is defined for
+    substitutions only.
+
+    Parameters
+    ----------
+    wildtype:
+        Guide body (PAM removed), 5'->3'. Case-insensitive; ``T`` reads as ``U``.
+    sg:
+        Off-target body (PAM removed), aligned to ``wildtype`` position by
+        position. Must be the same length as ``wildtype``.
+    pam:
+        PAM dinucleotide scored via ``pamscores`` (e.g. ``"GG"``).
+    mmscores, pamscores:
+        Doench 2016 mismatch and PAM penalty tables.
+
+    Returns
+    -------
+    float
+        CFD score in ``[0, 1]``.
+
+    Raises
+    ------
+    ValueError
+        If ``wildtype`` and ``sg`` differ in length (positional alignment is
+        undefined).
+    """
+    if len(wildtype) != len(sg):
+        raise ValueError(
+            f"CFD requires equal-length guide and target; "
+            f"got {len(wildtype)} and {len(sg)}"
         )
-        score *= mmscores[key]
-        i += 1
-    score *= pamscores[pam.upper()]  # multiply by PAM score
+    # Normalise to uppercase RNA up front so the comparison is case-insensitive
+    # (the target marks mismatches in lowercase) and 'T' is read as 'U'.
+    wildtype = dna2rna(wildtype.upper())
+    sg = dna2rna(sg.upper())
+    score = 1.0
+    for i, (wt_nt, ot_nt) in enumerate(zip(wildtype, sg)):
+        if wt_nt == ot_nt:
+            continue  # exact match: neutral factor
+        if wt_nt == "-" or ot_nt == "-":
+            if i == 0:
+                return 0
+            continue  # bulge gap: not penalised by the substitution model
+        key = f"r{wt_nt}:d{reverse_complement(ot_nt)},{i + 1}"
+        try:
+            score *= mmscores[key]
+        except KeyError:
+            # No model entry (e.g. an ambiguous 'N' base, or a position beyond
+            # the model's range): treat as neutral rather than abort the row.
+            continue
+    try:
+        score *= pamscores[pam.upper()]
+    except KeyError:
+        # Non-canonical PAM dinucleotide: keep the mismatch-only product.
+        pass
     return score

@@ -255,6 +255,10 @@ class CrispritzSearchInputArgs(CrispritzInputArgs):
     def bulge_mode(self) -> str:
         return self._args.bulge_mode
 
+    @property
+    def score(self) -> bool:
+        return self._args.score
+
 
 def _check_folder(dirname: str, parser: CrispritzArgumentParser, msg: str) -> None:
     if not os.path.exists(dirname) or not os.path.isdir(dirname):

@@ -403,6 +403,15 @@ def _create_search_parser(subparser: _SubParsersAction) -> _SubParsersAction:
         "(choices: mixed, single; default: mixed)",
     )
     optional_group.add_argument(
+        "--score",
+        action="store_true",
+        dest="score",
+        default=False,
+        help="compute the CFD off-target score for each target and fill the "
+        "cfd_score column (otherwise left as the NA sentinel). Intended for "
+        "SpCas9/xCas9 NGG-style PAMs. Off by default",
+    )
+    optional_group.add_argument(
         "--output-mode",
         type=str,
         metavar="MODE",

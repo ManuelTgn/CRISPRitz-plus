@@ -16,4 +16,5 @@ def search_offtargets_cli(args: CrispritzSearchInputArgs) -> None:
         args.debug,
         args.bulge_mode,
         args.output_mode,
+        score=args.score,
     )

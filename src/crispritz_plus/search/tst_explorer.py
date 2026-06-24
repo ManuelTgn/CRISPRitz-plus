@@ -18,6 +18,7 @@ from ..crispritz_errors import CrispritzTstError, CrispritzSearchError
 from ..exception_handlers import exception_handler
 from ..guide import GuideList
 from ..pam import PAM, SPCAS9, XCAS9
+from ..scores import score_shards
 from ..verbosity import VERBOSITY_LVL, print_verbosity
 
 
@@ -138,6 +139,7 @@ def search_offtargets_tst(
     bulge_mode: str = "mixed",
     output_mode: str = "both",
     sort_mode: str = "edit_distance",
+    score: bool = False,
 ) -> None:
     pam = PAM(pam_file, debug)  # initialize pam
     guides = _query_guides(
@@ -170,9 +172,13 @@ def search_offtargets_tst(
     # -- phase 2-3: score shards, then sort + k-way merge (targets)
     if config.write_targets:
         shard_paths = [r.shard_path for r in results]
-        # if pam.cas_system in [SPCAS9, XCAS9]:
-        #     print_verbosity(f"Scored {scored} row(s) across {len(shard_paths)} shard(s)", verbosity, VERBOSITY_LVL[1])
-        #     pass
+        if score and pam.cas_system in [SPCAS9, XCAS9]:
+            scored = score_shards(shard_paths, threads, debug)
+            print_verbosity(
+                f"Scored {scored} row(s) across {len(shard_paths)} shard(s)",
+                verbosity,
+                VERBOSITY_LVL[1],
+            )
         final_path = os.path.join(outdir, f"{guides_stem}.targets.tsv")
         written = merge_sorted_shards_cpp(shard_paths, final_path, sort_mode)
         print_verbosity(

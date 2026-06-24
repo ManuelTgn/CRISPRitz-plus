@@ -36,7 +36,7 @@ To start contributing:
 
    ```bash
    git clone https://github.com/<your-username>/CRISPRitz-plus.git
-   cd CRISPRitz-plu
+   cd CRISPRitz-plus
    ```
 3. **Create a branch** for your changes:
 
@@ -64,8 +64,8 @@ We recommend using a virtual environment or \[conda/mamba] for isolation.
 1. Create a virtual environment:
 
    ```bash
-   mamba create -n crisprhawk-dev python=3.8 -y
-   mamba activate crisprhawk-dev
+   mamba create -n crispritz-plus-dev python=3.8 -y
+   mamba activate crispritz-plus-dev
    ```
 
 2. Install the package in editable mode with dev dependencies:
@@ -96,8 +96,8 @@ If your contribution includes new functionality, please add corresponding unit t
 For quick checks, you can also run:
 
 ```bash
-crisprhawk --help
-crisprhawk search --help
+crispritz-plus --help
+crispritz-plus search --help
 ```
 
 ## 🎨 Style Guide

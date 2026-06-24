@@ -22,11 +22,13 @@ import os
 import sys
 
 
+from .annotation import annotate_results_cli
 from .crispritz_argparse import CrispritzArgumentParser
 from .crispritz_inputargs import (
     CrispritzEnrichmentInputArgs,
     CrispritzIndexingInputArgs,
     CrispritzSearchInputArgs,
+    CrispritzAnnotateInputArgs,
     OUTPUT_MODES,
     BULGE_MODES,
 )
@@ -64,6 +66,7 @@ def _create_parser_crispritz() -> CrispritzArgumentParser:
     _create_enrichment_parser(subparsers)
     _create_indexing_parser(subparsers)
     _create_search_parser(subparsers)
+    _create_annotation_parser(subparsers)
     return parser
 
 
@@ -462,6 +465,121 @@ def _create_search_parser(subparser: _SubParsersAction) -> _SubParsersAction:
     return parser_search
 
 
+def _create_annotation_parser(subparser: _SubParsersAction) -> _SubParsersAction:
+    """Create and configure the argument parser for the annotation subcommand.
+
+    Defines the inputs for annotating a search targets table: the targets TSV
+    produced by the 'search' command and one or more genomic BED tracks, plus
+    optional output-column names and the standard runtime controls.
+
+    Args:
+        subparser (_SubParsersAction): The subparsers collection to which the
+            annotation parser will be added.
+
+    Returns:
+        _SubParsersAction: The configured annotation subparser.
+    """
+    parser_annotate = subparser.add_parser(
+        SUBCOMMANDS[3],
+        usage="CRISPRitz annotate-results {version}\n\nUsage:\n"
+        "\tcrispritz annotate-results --targets <targets-file> "
+        "--annotations <bed> [<bed> ...] "
+        "[--annotation-names <name> [<name> ...]] [--outdir <dir>] "
+        "[--threads <n>]\n\n",
+        description="Annotate a search targets table with genomic context. For "
+        "each input BED track, a new column is appended to the right of the "
+        "targets table reporting the features that overlap every off-target "
+        "site. Overlaps are resolved through a tabix index for fast random "
+        "access; the input must be the TSV produced by the 'search' command.",
+        help="Append genomic annotations to a search targets table. Each "
+        "provided BED track (uncompressed '.bed' or block-gzipped '.bed.gz') "
+        "becomes one extra column listing, per off-target site, the overlapping "
+        "features. Tracks that are not already tabix-indexed are sorted, "
+        "bgzipped, and indexed in a temporary location, leaving the user's "
+        "files untouched. Accepts only the TSV produced by the 'search' command",
+        add_help=False,
+    )
+    general_group = parser_annotate.add_argument_group("General options")
+    general_group.add_argument(
+        "-h", "--help", action="help", help="show this help message and exit"
+    )
+    required_group = parser_annotate.add_argument_group("Options")
+    required_group.add_argument(
+        "--targets",
+        type=str,
+        metavar="TARGETS-FILE",
+        dest="targets_file",
+        required=True,
+        help="path to the off-target targets table (TSV) produced by the "
+        "'search' command. Its header must match the search output schema; the "
+        "annotation columns are appended to the right of this table",
+    )
+    required_group.add_argument(
+        "--annotations",
+        type=str,
+        nargs="+",
+        metavar="BED",
+        dest="annotations",
+        required=True,
+        help="one or more genomic annotation tracks in BED format. Both "
+        "uncompressed '.bed' and block-gzipped '.bed.gz' files are accepted. "
+        "Provide several space-separated paths to append several columns, one "
+        "per file and in the given order",
+    )
+    optional_group = parser_annotate.add_argument_group("Optional arguments")
+    optional_group.add_argument(
+        "--annotation-names",
+        type=str,
+        nargs="+",
+        metavar="NAME",
+        dest="annotation_names",
+        required=False,
+        default=None,
+        help="names for the appended annotation columns, one per --annotations "
+        "file and in the same order. If provided, the number of names must "
+        "match the number of annotation files. If omitted, columns are named "
+        "'annotation1' ... 'annotationN' (default: disabled)",
+    )
+    optional_group.add_argument(
+        "--outdir",
+        type=str,
+        metavar="OUTDIR",
+        dest="outdir",
+        required=False,
+        default=os.getcwd(),
+        help="directory where the annotated table is written. The output file "
+        "is named '<targets-stem>.annotated.tsv'. If not specified, results are "
+        "written to the current working directory",
+    )
+    optional_group.add_argument(
+        "--threads",
+        type=int,
+        metavar="THREADS",
+        dest="threads",
+        required=False,
+        default=1,
+        help="number of threads used to prepare (sort/bgzip/index) annotation "
+        "tracks. Use 0 for all available cores (default: 1)",
+    )
+    optional_group.add_argument(
+        "--verbosity",
+        type=int,
+        metavar="VERBOSITY",
+        dest="verbosity",
+        required=False,
+        default=1,
+        help="verbosity level of output messages: 0 = Silent, 1 = Normal, "
+        "2 = Verbose, 3 = Debug (default: 1)",
+    )
+    optional_group.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="enter debug mode and trace the full error stack",
+    )
+    return parser_annotate
+
+
 def _parse_input_args():
     parser = _create_parser_crispritz()  # parse input argument using custom parser
     if not sys.argv[1:]:  # no input args -> print help and exit
@@ -473,13 +591,15 @@ def _parse_input_args():
 def main():
     start = time()  # track eleapsed time
     try:
-        parser, args = _parse_input_args()  # parse input arguments
-        if args.command == SUBCOMMANDS[0]:  # add-variants
+        parser, args = _parse_input_args()      # parse input arguments
+        if args.command == SUBCOMMANDS[0]:      # add-variants
             add_variants_cli(CrispritzEnrichmentInputArgs(args, parser))
-        elif args.command == SUBCOMMANDS[1]:  # index-genome
+        elif args.command == SUBCOMMANDS[1]:    # index-genome
             index_genome_cli(CrispritzIndexingInputArgs(args, parser))
-        elif args.command == SUBCOMMANDS[2]:  # search
+        elif args.command == SUBCOMMANDS[2]:    # search
             search_offtargets_cli(CrispritzSearchInputArgs(args, parser))
+        elif args.command == SUBCOMMANDS[3]:    # annotate-results
+            annotate_results_cli(CrispritzAnnotateInputArgs(args, parser))
     except KeyboardInterrupt:
         sigint_handler()  # catch SIGINT and exit gracefully
     sys.stdout.write(f"{TOOLNAME} - Elapsed time {time() - start:.2f}s\n")

@@ -429,7 +429,7 @@ def _compress_and_index(sorted_plain: str, bed_path: str) -> str:
     return gz_path_
 
 
-def _prepare_bed_track(bed_path: str, debug: bool) -> str:
+def _prepare_bed_track(bed_path: str, verbosity: int, debug: bool) -> str:
     """Ensure a BED track is bgzip-compressed and Tabix-indexed.
 
     Returns *bed_path* unchanged when it is already bgzip-compressed
@@ -442,6 +442,9 @@ def _prepare_bed_track(bed_path: str, debug: bool) -> str:
     bed_path : str
         Path to a BED annotation track.  May be plain-text or
         bgzip-compressed.
+    verbosity : int
+        Controls progress message output via
+        :func:`~crispritz_plus.verbosity.print_verbosity`.
     debug : bool
         When *True*, errors propagate with a full traceback.
 
@@ -457,12 +460,34 @@ def _prepare_bed_track(bed_path: str, debug: bool) -> str:
         I/O error, or an indexing failure.
     """
     if _is_bgzipped(bed_path) and os.path.isfile(f"{bed_path}.tbi"):
-        return bed_path  # already random-access ready; nothing to do
-    try:
-        # sort BED for indexing, if BGZIPped -> assume sorted
-        sorted_plain = (
-            bed_path if _is_bgzipped(bed_path) else _sort_bed(bed_path, debug)
+        print_verbosity(
+            f"Track already indexed, skipping: {bed_path}",
+            verbosity,
+            VERBOSITY_LVL[2],
         )
+        return bed_path  # already random-access ready; nothing to do
+    print_verbosity(
+        f"Preparing track: {bed_path}",
+        verbosity,
+        VERBOSITY_LVL[2],
+    )
+    try:
+        if _is_bgzipped(bed_path):
+            # bgzip-compressed but missing .tbi; no need to sort, just index
+            print_verbosity(
+                f"bgzip-compressed but missing .tbi index; building index only: {bed_path}",
+                verbosity,
+                VERBOSITY_LVL[3],
+            )
+            sorted_plain = bed_path
+        else:
+            # plain-text BED; must sort before compression
+            print_verbosity(
+                f"Plain-text BED; sorting before compression: {bed_path}",
+                verbosity,
+                VERBOSITY_LVL[3],
+            )
+            sorted_plain = _sort_bed(bed_path, debug)
         return _compress_and_index(sorted_plain, bed_path)
     except Exception as e:  # malformed BED, I/O error, indexing failure, ...
         exception_handler(
@@ -475,7 +500,7 @@ def _prepare_bed_track(bed_path: str, debug: bool) -> str:
 
 
 def _prepare_tracks(
-    annotation_files: Sequence[str], threads: int, debug: bool
+    annotation_files: Sequence[str], threads: int, verbosity: int, debug: bool
 ) -> List[str]:
     """Prepare every annotation track for random-access querying.
 
@@ -494,6 +519,9 @@ def _prepare_tracks(
         Paths to the raw BED annotation tracks.
     threads : int
         Maximum number of worker threads for parallel preparation.
+    verbosity : int
+        Controls progress message output via
+        :func:`~crispritz_plus.verbosity.print_verbosity`.
     debug : bool
         When *True*, errors propagate with a full traceback.
 
@@ -504,12 +532,17 @@ def _prepare_tracks(
         order as *annotation_files*.
     """
     workers = max(1, min(threads, len(annotation_files)))
+    print_verbosity(
+        f"Preparing {len(annotation_files)} track(s) using {workers} thread(s)",
+        verbosity,
+        VERBOSITY_LVL[2],
+    )
     if workers == 1:  # avoid pool overhead for the common single-track case
-        return [_prepare_bed_track(p, debug) for p in annotation_files]
+        return [_prepare_bed_track(p, verbosity, debug) for p in annotation_files]
     prepared: List[Optional[str]] = [None] * len(annotation_files)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         index_to_future = {
-            i: pool.submit(_prepare_bed_track, path, debug)
+            i: pool.submit(_prepare_bed_track, path, verbosity, debug)
             for i, path in enumerate(annotation_files)
         }
         for i, future in index_to_future.items():
@@ -794,11 +827,22 @@ def _annotate_stream(
     int
         Total number of off-target rows annotated, excluding the header.
     """
+    print_verbosity(
+        f"Streaming annotation from {targets_file!r}",
+        verbosity,
+        VERBOSITY_LVL[3],
+    )
     with open(targets_file, mode="r") as fin:
         header_line = fin.readline().strip()
         # Append the new headers to the right of the existing schema
         column_index = _update_header(
             header_line, fout, column_names, targets_file, debug
+        )
+        print_verbosity(
+            f"Header validated: {len(column_index)} input column(s) + "
+            f"{len(column_names)} annotation column(s)",
+            verbosity,
+            VERBOSITY_LVL[2],
         )
         annotated = 0
         for line_no, line in enumerate(fin, start=2):  # header was line 1
@@ -908,18 +952,29 @@ def annotate_results(
             verbosity=2,
         )
     """
+    print_verbosity(
+        f"annotate_results: targets={targets_file!r}, tracks={annotation_files}, "
+        f"outdir={outdir!r}, threads={threads}",
+        verbosity,
+        VERBOSITY_LVL[3],
+    )
     column_names = _resolve_annotation_names(annotation_files, annotation_names, debug)
+    print_verbosity(
+        f"Annotation column names: {column_names}",
+        verbosity,
+        VERBOSITY_LVL[2],
+    )
     targets_ann_file = _create_targets_ann(targets_file, outdir)
     tabix_handles: List[pysam.TabixFile] = []
     try:
         print_verbosity(
             f"Preparing {len(annotation_files)} annotation track(s)",
             verbosity,
-            VERBOSITY_LVL[2],
+            VERBOSITY_LVL[1],
         )
         tabix_handles = [
             pysam.TabixFile(p)
-            for p in _prepare_tracks(annotation_files, threads, debug)
+            for p in _prepare_tracks(annotation_files, threads, verbosity, debug)
         ]
         print_verbosity(
             f"Annotating {targets_file} -> {targets_ann_file}",

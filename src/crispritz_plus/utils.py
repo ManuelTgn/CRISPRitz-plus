@@ -50,3 +50,14 @@ def find_tabix_index(fname_path: str) -> bool:
 
 def set_processes(tasks_n: int, threads: int) -> int:
     return min(tasks_n, threads)
+
+
+def rename_files(origin: str, dest: str) -> str:
+    origin_path = Path(origin)
+    origin_path.rename(dest)
+    assert os.path.isfile(dest)
+    return dest
+
+
+def remove_file(path: str) -> None:
+    Path(path).unlink()

@@ -14,7 +14,13 @@ TOOLNAME = "CRISPRitz"
 COMMAND = "crispritz"
 
 # sub commands
-SUBCOMMANDS = ["add-variants", "index-genome", "search", "annotate-results"]
+SUBCOMMANDS = [
+    "add-variants",
+    "index-genome",
+    "search",
+    "annotate-results",
+    "generate-report",
+]
 
 
 # ------------------------------------------------------------------------------

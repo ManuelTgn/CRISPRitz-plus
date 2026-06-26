@@ -29,12 +29,14 @@ from .crispritz_inputargs import (
     CrispritzIndexingInputArgs,
     CrispritzSearchInputArgs,
     CrispritzAnnotateInputArgs,
+    CrispritzReportInputArgs,
     OUTPUT_MODES,
     BULGE_MODES,
 )
 from .enrichment import add_variants_cli
 from .exception_handlers import sigint_handler
 from .indexing import index_genome_cli
+from .plots import generate_report_cli
 from .search import search_offtargets_cli
 from .utils import TOOLNAME, SUBCOMMANDS
 from .version import __version__
@@ -67,6 +69,7 @@ def _create_parser_crispritz() -> CrispritzArgumentParser:
     _create_indexing_parser(subparsers)
     _create_search_parser(subparsers)
     _create_annotation_parser(subparsers)
+    _create_report_parser(subparsers)
     return parser
 
 
@@ -580,6 +583,92 @@ def _create_annotation_parser(subparser: _SubParsersAction) -> _SubParsersAction
     return parser_annotate
 
 
+def _create_report_parser(subparser: _SubParsersAction) -> _SubParsersAction:
+    """Create and configure the argument parser for the generate-report subcommand."""
+    parser_report = subparser.add_parser(
+        SUBCOMMANDS[4],
+        usage="CRISPRitz generate-report {version}\n\nUsage:\n"
+        "\tcrispritz generate-report --input <annotated-tsv> [--mm <n>] "
+        "[--guide <guide>] [--prefix <name>] [--outdir <dir>]\n\n",
+        description="Generate graphical reports from an annotated targets TSV: a "
+        "LogoMaker off-target profile (bulge-aware) per guide and a radar chart "
+        "whose axes are read dynamically from the annotation columns.",
+        help="Produce off-target profile and annotation radar figures. Consumes "
+        "ONLY the annotated TSV emitted by 'annotate-results'; unannotated or "
+        "malformed inputs are rejected.",
+        add_help=False,
+    )
+    general_group = parser_report.add_argument_group("General options")
+    general_group.add_argument(
+        "-h", "--help", action="help", help="show this help message and exit"
+    )
+    required_group = parser_report.add_argument_group("Options")
+    required_group.add_argument(
+        "--input",
+        type=str,
+        metavar="ANNOTATED-TSV",
+        dest="input_tsv",
+        required=True,
+        help="path to the annotated targets TSV produced by 'annotate-results'",
+    )
+    optional_group = parser_report.add_argument_group("Optional arguments")
+    optional_group.add_argument(
+        "--mm",
+        type=int,
+        metavar="MM",
+        dest="mm",
+        required=False,
+        default=None,
+        help="mismatch level to display on the radar. If omitted, per-axis totals "
+        "across all mismatch levels are plotted (default: totals)",
+    )
+    optional_group.add_argument(
+        "--guide",
+        type=str,
+        metavar="GUIDE",
+        dest="guides",
+        action="append",
+        required=False,
+        default=None,
+        help="restrict the report to a specific guide (gap-free gRNA+PAM). May be "
+        "repeated. If omitted, every guide in the file is reported",
+    )
+    optional_group.add_argument(
+        "--prefix",
+        type=str,
+        metavar="PREFIX",
+        dest="prefix",
+        required=False,
+        default="report",
+        help="filename prefix for the generated figures (default: report)",
+    )
+    optional_group.add_argument(
+        "--outdir",
+        type=str,
+        metavar="OUTDIR",
+        dest="outdir",
+        required=False,
+        default=os.getcwd(),
+        help="directory where figures will be written (default: current directory)",
+    )
+    optional_group.add_argument(
+        "--verbosity",
+        type=int,
+        metavar="VERBOSITY",
+        dest="verbosity",
+        required=False,
+        default=1,
+        help="verbosity level: 0 = Silent, 1 = Normal, 2 = Verbose, 3 = Debug (default: 1)",
+    )
+    optional_group.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="enter debug mode and trace the full error stack",
+    )
+    return parser_report
+
+
 def _parse_input_args():
     parser = _create_parser_crispritz()  # parse input argument using custom parser
     if not sys.argv[1:]:  # no input args -> print help and exit
@@ -591,15 +680,17 @@ def _parse_input_args():
 def main():
     start = time()  # track eleapsed time
     try:
-        parser, args = _parse_input_args()      # parse input arguments
-        if args.command == SUBCOMMANDS[0]:      # add-variants
+        parser, args = _parse_input_args()  # parse input arguments
+        if args.command == SUBCOMMANDS[0]:  # add-variants
             add_variants_cli(CrispritzEnrichmentInputArgs(args, parser))
-        elif args.command == SUBCOMMANDS[1]:    # index-genome
+        elif args.command == SUBCOMMANDS[1]:  # index-genome
             index_genome_cli(CrispritzIndexingInputArgs(args, parser))
-        elif args.command == SUBCOMMANDS[2]:    # search
+        elif args.command == SUBCOMMANDS[2]:  # search
             search_offtargets_cli(CrispritzSearchInputArgs(args, parser))
-        elif args.command == SUBCOMMANDS[3]:    # annotate-results
+        elif args.command == SUBCOMMANDS[3]:  # annotate-results
             annotate_results_cli(CrispritzAnnotateInputArgs(args, parser))
+        else:  # generate-report
+            generate_report_cli(CrispritzReportInputArgs(args, parser))
     except KeyboardInterrupt:
         sigint_handler()  # catch SIGINT and exit gracefully
     sys.stdout.write(f"{TOOLNAME} - Elapsed time {time() - start:.2f}s\n")

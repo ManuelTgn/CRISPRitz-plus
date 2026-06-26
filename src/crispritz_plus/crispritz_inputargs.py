@@ -93,11 +93,11 @@ class CrispritzEnrichmentInputArgs(CrispritzInputArgs):
         )
 
     def _check_consistency(self) -> None:
-        self._validate_vcf_folder()     # check vcf folder
+        self._validate_vcf_folder()  # check vcf folder
         self._validate_genome_folder()  # check genome folder
         self._validate_output_folder()  # check output folder
-        self._validate_threads()        # check threads number
-        self._validate_verbosity()      # check verbosity
+        self._validate_threads()  # check threads number
+        self._validate_verbosity()  # check verbosity
 
     @property
     def vcfs(self) -> List[str]:
@@ -148,11 +148,11 @@ class CrispritzIndexingInputArgs(CrispritzInputArgs):
 
     def _check_consistency(self) -> None:
         self._validate_genome_folder()  # check genome folder
-        self._validate_pam_file()       # check pam file
-        self._validate_bmax()           # check max bulge
+        self._validate_pam_file()  # check pam file
+        self._validate_bmax()  # check max bulge
         self._validate_output_folder()  # check output folder
-        self._validate_threads()        # check threads number
-        self._validate_verbosity()      # check verbosity
+        self._validate_threads()  # check threads number
+        self._validate_verbosity()  # check verbosity
 
     @property
     def fastas(self) -> List[str]:
@@ -174,15 +174,15 @@ class CrispritzSearchInputArgs(CrispritzInputArgs):
         self._check_consistency()
 
     def _check_consistency(self) -> None:
-        self._validate_index_genome()   # check genome index folder
-        self._validate_pam_file()       # check pam file
-        self._validate_guides_file()    # check guides file
-        self._validate_mm()             # check mismatch
-        self._validate_bdna()           # check dna bulge
-        self._validate_brna()           # check rna bulge
+        self._validate_index_genome()  # check genome index folder
+        self._validate_pam_file()  # check pam file
+        self._validate_guides_file()  # check guides file
+        self._validate_mm()  # check mismatch
+        self._validate_bdna()  # check dna bulge
+        self._validate_brna()  # check rna bulge
         self._validate_output_folder()  # check output folder
-        self._validate_threads()        # check threads number
-        self._validate_verbosity()      # check verbosity
+        self._validate_threads()  # check threads number
+        self._validate_verbosity()  # check verbosity
 
     def _validate_index_genome(self) -> None:
         _check_folder(
@@ -258,7 +258,7 @@ class CrispritzSearchInputArgs(CrispritzInputArgs):
     @property
     def score(self) -> bool:
         return self._args.score
-    
+
 
 class CrispritzAnnotateInputArgs(CrispritzInputArgs):
 
@@ -267,12 +267,12 @@ class CrispritzAnnotateInputArgs(CrispritzInputArgs):
         self._check_consistency()
 
     def _check_consistency(self) -> None:
-        self._validate_targets_file()      # check search targets table
-        self._validate_annotations()       # check annotation BED files
+        self._validate_targets_file()  # check search targets table
+        self._validate_annotations()  # check annotation BED files
         self._validate_annotation_names()  # check names/files length match
-        self._validate_output_folder()     # check output folder
-        self._validate_threads()           # check threads number
-        self._validate_verbosity()         # check verbosity
+        self._validate_output_folder()  # check output folder
+        self._validate_threads()  # check threads number
+        self._validate_verbosity()  # check verbosity
 
     def _validate_targets_file(self) -> None:
         _check_file(
@@ -311,6 +311,55 @@ class CrispritzAnnotateInputArgs(CrispritzInputArgs):
     @property
     def annotation_names(self) -> Optional[List[str]]:
         return self._args.annotation_names
+
+
+class CrispritzReportInputArgs:
+    """Validated arguments for the generate-report subcommand."""
+
+    def __init__(self, args: Namespace, parser: CrispritzArgumentParser) -> None:
+        self._args = args
+        self._parser = parser
+        self._validate()
+
+    def _validate(self) -> None:
+        _check_file(
+            self._args.input_tsv,
+            self._parser,
+            f"Cannot find annotated results file {self._args.input_tsv}",
+        )
+        if self._args.mm is not None and self._args.mm < 0:
+            self._parser.error(f"Invalid mismatch level: {self._args.mm}")
+        self._args.verbosity = _validate_verbosity_value(
+            self._args.verbosity, self._parser
+        )
+
+    @property
+    def input_tsv(self) -> str:
+        return self._args.input_tsv
+
+    @property
+    def mm(self):
+        return self._args.mm
+
+    @property
+    def guides(self):
+        return self._args.guides
+
+    @property
+    def prefix(self) -> str:
+        return self._args.prefix
+
+    @property
+    def outdir(self) -> str:
+        return self._args.outdir
+
+    @property
+    def verbosity(self) -> int:
+        return self._args.verbosity
+
+    @property
+    def debug(self) -> bool:
+        return self._args.debug
 
 
 def _check_folder(dirname: str, parser: CrispritzArgumentParser, msg: str) -> None:

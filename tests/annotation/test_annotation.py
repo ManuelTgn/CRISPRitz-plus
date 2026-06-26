@@ -647,7 +647,7 @@ class TestPrepareBedTrack:
         tbi = tmp_path / "track.bed.gz.tbi"
         gz.write_bytes(b"")
         tbi.write_bytes(b"")
-        result = _prepare_bed_track(str(gz), debug=False)
+        result = _prepare_bed_track(str(gz), verbosity=0, debug=False)
         assert result == str(gz)
 
 

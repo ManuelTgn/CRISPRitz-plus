@@ -316,7 +316,7 @@ class CrispritzAnnotateInputArgs(CrispritzInputArgs):
 class CrispritzReportInputArgs:
     """Validated arguments for the generate-report subcommand."""
 
-    def __init__(self, args, parser: CrispritzArgumentParser) -> None:
+    def __init__(self, args: Namespace, parser: CrispritzArgumentParser) -> None:
         self._args = args
         self._parser = parser
         self._validate()

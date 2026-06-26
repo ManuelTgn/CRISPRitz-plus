@@ -36,6 +36,7 @@ from .crispritz_inputargs import (
 from .enrichment import add_variants_cli
 from .exception_handlers import sigint_handler
 from .indexing import index_genome_cli
+from .plots import generate_report_cli
 from .search import search_offtargets_cli
 from .utils import TOOLNAME, SUBCOMMANDS
 from .version import __version__
@@ -689,7 +690,7 @@ def main():
         elif args.command == SUBCOMMANDS[3]:  # annotate-results
             annotate_results_cli(CrispritzAnnotateInputArgs(args, parser))
         else:  # generate-report
-            pass
+            generate_report_cli(CrispritzReportInputArgs(args, parser))
     except KeyboardInterrupt:
         sigint_handler()  # catch SIGINT and exit gracefully
     sys.stdout.write(f"{TOOLNAME} - Elapsed time {time() - start:.2f}s\n")

@@ -70,8 +70,8 @@ build-dir = "build/{wheel_tag}"
 # Install the compiled extension into the Python package directory inside the wheel.
 wheel.install-dir = "src/crispritz_plus"
 
-# Build the extension module AND all four C++ test executables in one cmake --build pass.
-# crispritz_core (the static library) is built implicitly as a dependency of all five.
+# Build the extension module AND all C++ test executables in one cmake --build pass.
+# _ternary_search_tree (the static library) is built implicitly as a dependency of all.
 build.targets = [
     "_ternary_search_tree",
     "test_nucleotide_encoding",
@@ -109,8 +109,8 @@ args = [
 output-on-failure = true
 # Stop immediately on the first failing test to surface errors quickly.
 stop-on-failure   = true
-# Parallelise: run all seven test executables concurrently.
-parallel          = 7
+# Parallelise: run all twelve test executables concurrently.
+parallel          = 12
 
 # ------------------------------------------------------------------------------
 # dev tooling

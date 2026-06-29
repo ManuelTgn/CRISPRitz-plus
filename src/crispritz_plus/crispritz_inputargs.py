@@ -31,15 +31,13 @@ class CrispritzInputArgs:
         self._parser = parser
 
     def _validate_output_folder(self) -> None:
-        parentdir = os.path.dirname(self._args.outdir)
+        outdir = os.path.abspath(self._args.outdir)
+        parentdir = os.path.dirname(self._args.outdir) or os.getcwd()
         _check_folder(
             parentdir, self._parser, f"Cannot create output folder {self._args.outdir}"
         )
-        outdir = os.path.abspath(self._args.outdir)
-        if not os.path.exists(outdir) or not os.path.isdir(outdir):
-            os.makedirs(outdir)  # create output folder
+        os.makedirs(outdir, exist_ok=True)  # create output folder
         self._outdir = outdir
-        assert os.path.isdir(self._outdir)
 
     def _validate_threads(self) -> None:
         self._threads = _validate_threads_num(self._args.threads, self._parser)
@@ -49,7 +47,7 @@ class CrispritzInputArgs:
 
     @property
     def outdir(self) -> str:
-        return self._args.outdir
+        return self._outdir
 
     @property
     def threads(self) -> int:

@@ -210,6 +210,13 @@ def _initialize_vcf(
         # retrieve vcf contig
         _tabix_index(f, verbosity, debug)
         contig = _retrieve_contig_vcf(VariantFile(f, mode="r"), debug)
+        if contig not in fasta_vcf_map:
+            exception_handler(
+                CrispritzEnrichmentError,
+                f"VCF {f} targets contig '{contig}' with no matching FASTA",
+                os.EX_DATAERR,
+                debug,
+            )
         # multiple vcf pointing to same contig
         if fasta_vcf_map[contig].vcf:
             exception_handler(

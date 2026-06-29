@@ -62,10 +62,10 @@ class GuideList:
                 self._debug,
             )
         # guides must have same length
-        if any(len(g) != guides[0] for g in guides[1:]):
+        if any(len(g) != len(guides[0]) for g in guides[1:]):
             exception_handler(
                 CrispritzGuideError,
-                "Mismarching guide lengths",
+                "Mismatching guide lengths",
                 os.EX_DATAERR,
                 self._debug,
             )

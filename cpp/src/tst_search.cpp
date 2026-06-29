@@ -593,7 +593,7 @@ void traverse(const Context &ctx, int node_idx, Frame frame,
 
   if (is_match) {
     Frame nx = frame;
-    nx.aln_guide += node_char;
+    nx.aln_guide += q_char;
     nx.aln_target += node_char;
     nx.guide_pos++;
     step_eq(std::move(nx));

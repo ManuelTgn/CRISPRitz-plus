@@ -1,49 +1,174 @@
-""" """
+"""Variant enrichment for CRISPRitz-plus.
+ 
+Enriches a reference genome, one contig per FASTA file, with the variants
+declared in matching per-contig VCF files, producing the inputs required by
+the downstream ``search`` step.
+ 
+Two enrichment products are generated:
+ 
+SNP-enriched contigs
+    Each SNP position in the reference is overwritten in place with the IUPAC
+    ambiguity code that encodes the reference plus alternate alleles (see
+    :data:`~crispritz_plus.dna_alphabet.IUPAC_ENCODER`).  The enriched contig
+    is written to the SNP output folder as ``{stem}.enriched.fa``.
+ 
+Synthetic ("fake") indel contigs
+    When indel analysis is enabled, each carried indel allele is materialised
+    as a short reference window with the indel applied (see
+    :meth:`~crispritz_plus.genome_io.GenomeReader.insert_indel`).  All such
+    windows for a contig are concatenated, separated by sentinel ``N`` lines,
+    into a single ``fake{contig}.fa`` file in the indel output folder.
+ 
+Optional metadata
+    When ``store_dictionary`` is set, a per-contig SNP JSON dictionary
+    (``snps_dict_{contig}.json``) and, for indels, a tab-delimited log
+    (``log{contig}.txt``) are written alongside the enriched sequences.
+ 
+Concurrency
+    Contigs carrying variants are enriched independently and are distributed
+    across a :class:`multiprocessing.pool.Pool`; contigs without an
+    associated VCF are simply copied through.  The thread budget collapses to
+    a serial loop when only one worker or one task is required.
+ 
+Module-level constants
+----------------------
+VARIANTGENOMEDIR : str
+    Root output folder name for all enriched-genome products
+    (``"variants_genome"``).
+SNPDIR : str
+    Sub-path (under :data:`VARIANTGENOMEDIR`) for SNP-enriched contigs.
+INDELSDIR : str
+    Sub-path (under :data:`VARIANTGENOMEDIR`) for synthetic indel contigs and
+    their logs.
+ 
+Key dependencies
+----------------
+genome_io.GenomeReader / GenomeWriter
+    Load a contig FASTA, apply SNPs/indels in memory, and write the result.
+genome_io.INDELOFFSET
+    Flank size used when materialising an indel window.
+dna_alphabet.IUPAC_ENCODER / IUPACTABLE
+    Encode an allele set as a single IUPAC code, and expand an IUPAC code back
+    to its concrete bases (used to validate the FASTA reference against the VCF).
+enrichment.variants
+    Carrier types (``Snp``/``Snps``, ``Indel``/``Indels``) and the indel
+    bookkeeping objects (``IndelsSet``, ``IndelPair``, ``IndelInfo``).
+enrichment.enrichment_pair.EnrichPair
+    Holds the validated FASTA/VCF paths for one contig.
+utils / verbosity / progress
+    Folder creation, tabix-index discovery, worker-count sizing, level-gated
+    progress messages, and progress bars.
+pysam
+    FASTA/VCF reading and tabix indexing.
+ 
+Public API
+----------
+enrich_genome
+    Top-level entry point for the ``add-variants`` workflow.
+insert_snp_in_dict, insert_indel_in_dict
+    Record SNP / indel metadata into the per-contig dictionary and log. (These
+    two lack the leading-underscore convention of the other helpers; they are
+    treated as public here, but see the note in their docstrings.)
+ 
+Internal helpers (by stage)
+---------------------------
+Input mapping
+    ``_retrieve_contig_name``, ``_retrieve_contig_names``, ``_initialize_fasta``,
+    ``_tabix_index``, ``_retrieve_contig_vcf``, ``_initialize_vcf``,
+    ``_construct_fasta_vcf_map``.
+Workflow orchestration
+    ``_split_contigs``, ``_prepare_output_dir``, ``_enrich_no_variants``,
+    ``_run_enrich_genome``, ``_enrich_variants``, ``_enrich_variants_worker``.
+VCF parsing
+    ``_extract_samples``, ``_retrieve_samples``, ``_skip_variant``,
+    ``_extract_af_idx``, ``_split_snps_indels``.
+Variant identity / annotation
+    ``_compute_vid``, ``_retrieve_carriers``, ``_retrieve_af``,
+    ``_create_snp_dict_entry``, ``_initialize_samples_dict_indels``,
+    ``_compute_indel_coordinates``.
+Sequence enrichment
+    ``_process_snp``, ``_insert_indel``, ``_process_indel``, ``_insert_variants``.
+Output writing
+    ``_save_enriched_contig``, ``_store_dictionary_json``, ``_save_indels_fasta``,
+    ``_store_indels_log``.
+"""
 
-from .crispritz_enrichment_error import CrispritzEnrichmentError
-
-from ..exception_handlers import exception_handler
-from ..genome_io import GenomeReader, GenomeWriter, INDELOFFSET
-from ..dna_alphabet import IUPAC_ENCODER, IUPACTABLE
-from ..utils import create_folder, find_tabix_index, set_processes
-from ..verbosity import VERBOSITY_LVL, print_verbosity
-from ..progress import progress_bar, progress_bar_parallel
-from .enrichment_pair import EnrichPair
-from .variants import Snp, Snps, Indel, Indels, IndelsSet, IndelPair, IndelInfo
-
-from typing import List, Dict, Set, Tuple, Union
-from pysam import FastaFile, VariantFile, tabix_index
-from pysam.utils import SamtoolsError
 from io import TextIOWrapper
 from multiprocessing.pool import Pool
+from pysam import FastaFile, VariantFile, tabix_index
+from pysam.utils import SamtoolsError
 from time import time
+from typing import List, Dict, Set, Tuple, Union
 
-import json
 import gzip
+import json
 import os
 
 
-# output folders
+from ..dna_alphabet import IUPAC_ENCODER, IUPACTABLE
+from ..exception_handlers import exception_handler
+from ..genome_io import GenomeReader, GenomeWriter, INDELOFFSET
+from ..progress import progress_bar, progress_bar_parallel
+from ..utils import create_folder, find_tabix_index, set_processes
+from ..verbosity import VERBOSITY_LVL, print_verbosity
+
+from .crispritz_enrichment_error import CrispritzEnrichmentError
+from .enrichment_pair import EnrichPair
+from .variants import Snp, Snps, Indel, Indels, IndelsSet, IndelPair, IndelInfo
+
+
+# ==============================================================================
+# Module-level constants: output folder layout
+# ==============================================================================
+# All enrichment products are written under a single root folder created inside
+# the user-supplied ``outdir``. The two leaf folders separate the SNP-enriched
+# contigs from the synthetic indel contigs and their logs. These names are the
+# single source of truth for the on-disk layout and are consumed by
+# :func:`_prepare_output_dir`.
+ 
+#: Name of the root output folder (relative to the run's ``outdir``) under which
+#: every enriched-genome product is written. Both :data:`SNPDIR` and
+#: :data:`INDELSDIR` are nested inside it.
 VARIANTGENOMEDIR = "variants_genome"  # root folder
+
+#: Relative path (``variants_genome/SNPs_genome``) of the folder holding the
+#: SNP-enriched contig FASTA files (``{stem}.enriched.fa``) and, when
+#: ``store_dictionary`` is enabled, the per-contig SNP JSON dictionaries
+#: (``snps_dict_{contig}.json``). Built by joining :data:`VARIANTGENOMEDIR`
+#: with the ``SNPs_genome`` leaf so the SNP and indel trees never collide.
 SNPDIR = os.path.join(VARIANTGENOMEDIR, "SNPs_genome")  # snps genome
+
+#: Relative path (``variants_genome/INDELs_genome``) of the folder holding the
+#: synthetic ("fake") indel contig FASTA files (``fake{contig}.fa``) and, when
+#: ``store_dictionary`` is enabled, the per-contig indel logs
+#: (``log{contig}.txt``). Built by joining :data:`VARIANTGENOMEDIR` with the
+#: ``INDELs_genome`` leaf.
 INDELSDIR = os.path.join(VARIANTGENOMEDIR, "INDELs_genome")  # indels genome
 
 
 def _retrieve_contig_name(fasta: FastaFile, debug: bool) -> str:
-    """Retrieve the single contig name from a FASTA file and normalize it. The
-    contig name is validated for uniqueness and adjusted to start with 'chr'
-    when needed.
-
-    This function checks that the given FASTA file contains exactly one contig,
-    raises an error otherwise, and returns the standardized contig identifier.
-
-    Args:
-        fasta (FastaFile): An open pysam.FastaFile object from which to read
-            contig names.
-        debug (bool): Flag indicating whether to use debug-aware error handling.
-
-    Returns:
-        str: The normalized contig name extracted from the FASTA file.
+    """Return the single, normalised contig name of a FASTA file.
+ 
+        Each input FASTA is expected to hold exactly one contig (the genome is
+        split per chromosome).  The name is normalised to start with ``"chr"``.
+ 
+        Parameters
+        ----------
+        fasta : pysam.FastaFile
+            Open FASTA handle to inspect.
+        debug : bool
+            When *True*, errors propagate with a full traceback instead of a
+            formatted user-facing message.
+ 
+        Returns
+        -------
+        str
+            The normalised contig name (prefixed with ``"chr"`` when absent).
+ 
+        Raises
+        ------
+        CrispritzEnrichmentError
+            If the FASTA declares zero or more than one contig.
     """
     if len(fasta.references) != 1:  # assumes each fasta is chromosome separated
         contigs = ", ".join(fasta.references)
@@ -61,21 +186,24 @@ def _retrieve_contig_name(fasta: FastaFile, debug: bool) -> str:
 def _retrieve_contig_names(
     fasta_files: List[str], verbosity: int, debug: bool
 ) -> Set[str]:
-    """Retrieve standardized contig names from a list of FASTA files. Each FASTA
-    file is expected to contain exactly one contig.
-
-    This function reads the headers of the provided FASTA files, extracts their
-    contig names, normalizes them to start with 'chr', and returns the set of
-    unique contig identifiers found.
-
-    Args:
-        fasta_files (List[str]): List of paths to FASTA files representing
-            genome contigs.
-        verbosity (int): Verbosity level controlling printed progress information.
-        debug (bool): Flag indicating whether to use debug-aware error handling.
-
-    Returns:
-        Set[str]: A set of normalized contig names extracted from the FASTA files.
+    """Return the set of normalised contig names across several FASTA files.
+ 
+        Reads each FASTA via :func:`_retrieve_contig_name` (which enforces the
+        single-contig rule) and collects the normalised names.
+ 
+        Parameters
+        ----------
+        fasta_files : List[str]
+            Paths to the per-contig FASTA files.
+        verbosity : int
+            Verbosity level controlling progress messages.
+        debug : bool
+            When *True*, errors propagate with a full traceback.
+ 
+        Returns
+        -------
+        Set[str]
+            The unique, ``"chr"``-normalised contig names.
     """
     # retrieve contig names for each fasta file in genome folder
     print_verbosity(
@@ -89,21 +217,30 @@ def _retrieve_contig_names(
 def _initialize_fasta(
     fasta_vcf_map: Dict[str, EnrichPair], fasta_files: List[str], debug: bool
 ) -> Dict[str, EnrichPair]:
-    """Populate the FASTA entries of a contig-to-file mapping. This associates each
-    contig key with exactly one corresponding FASTA file.
-
-    This function inspects each input FASTA, derives its contig name in a
-    normalized 'chr' form, checks for duplicate assignments and records the file
-    path in the mapping.
-
-    Args:
-        fasta_vcf_map (Dict[str,EnrichPair]): Dictionary mapping contig names
-            to `EnrichPair` objects to be updated with FASTA paths.
-        fasta_files (List[str]): List of FASTA file paths to register in the mapping.
-        debug (bool): Flag indicating whether to use debug-aware error handling.
-
-    Returns:
-        Dict[str,EnrichPair]: The updated contig-to-file mapping including the assigned FASTA paths.
+    """Assign each FASTA file to its contig slot in the mapping.
+ 
+        Derives the normalised contig name of every FASTA and records the path on
+        the corresponding :class:`~crispritz_plus.enrichment.enrichment_pair.EnrichPair`,
+        rejecting any contig that is targeted by more than one FASTA.
+ 
+        Parameters
+        ----------
+        fasta_vcf_map : Dict[str, EnrichPair]
+            Contig-to-pair mapping to populate with FASTA paths.
+        fasta_files : List[str]
+            Paths to the per-contig FASTA files.
+        debug : bool
+            When *True*, errors propagate with a full traceback.
+ 
+        Returns
+        -------
+        Dict[str, EnrichPair]
+            The same mapping, with FASTA slots assigned.
+ 
+        Raises
+        ------
+        CrispritzEnrichmentError
+            If two FASTA files resolve to the same contig.
     """
     for f in fasta_files:
         contig = FastaFile(f).references[0]  # retrieve contig name
@@ -123,16 +260,28 @@ def _initialize_fasta(
 
 
 def _tabix_index(vcf_fname: str, verbosity: int, debug: bool) -> None:
-    """Ensure that a VCF file has an associated tabix index. This prepares the VCF
-    for random access during downstream enrichment.
-
-    The function checks for an existing index, creates one if missing, and uses
-    debug-aware error handling to report failures.
-
-    Args:
-        vcf_fname (str): Path to the VCF file to be indexed.
-        verbosity (int): Verbosity level controlling printed progress information.
-        debug (bool): Flag indicating whether to use debug-aware error handling.
+    """Ensure a VCF has a tabix index, building one if necessary.
+ 
+        Returns immediately when an index already exists; otherwise creates a
+        ``vcf``-preset tabix index in place.
+ 
+        Parameters
+        ----------
+        vcf_fname : str
+            Path to the VCF file to index.
+        verbosity : int
+            Verbosity level controlling progress messages.
+        debug : bool
+            When *True*, errors propagate with a full traceback.
+ 
+        Returns
+        -------
+        None
+ 
+        Raises
+        ------
+        CrispritzEnrichmentError
+            If indexing fails.
     """
     if find_tabix_index(vcf_fname):  # index found, do nothing
         return
@@ -227,6 +376,9 @@ def _initialize_vcf(
                 debug,
             )
         fasta_vcf_map[contig].vcf = f  # assign vcf slot
+    print_verbosity(
+        f"Registered {len(vcf_files)} VCF track(s)", verbosity, VERBOSITY_LVL[2]
+    )
     return fasta_vcf_map
 
 
@@ -285,17 +437,17 @@ def _split_contigs(
     print_verbosity(
         "Retrieving contigs with associated VCFs", verbosity, VERBOSITY_LVL[3]
     )
-    contigs_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf is not None]
-    contigs_wo_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf is None]
+    contigs_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf]
+    contigs_wo_vcf = [contig for contig, p in fasta_vcf_map.items() if not p.vcf]
     print_verbosity(
         f"Contigs with VCFs: {len(contigs_vcf)}, contigs without VCFs: {len(contigs_wo_vcf)}",
         verbosity,
-        VERBOSITY_LVL[3],
+        VERBOSITY_LVL[2],
     )
     return contigs_vcf, contigs_wo_vcf
 
 
-def _prepare_output_dir(outdir: str) -> Tuple[str, str]:
+def _prepare_output_dir(outdir: str, verbosity: int) -> Tuple[str, str]:
     """Prepare the output directory structure for enrichment results. This ensures
     separate subfolders exist for SNP and INDEL enriched genomes.
 
@@ -304,15 +456,21 @@ def _prepare_output_dir(outdir: str) -> Tuple[str, str]:
 
     Args:
         outdir (str): Root output directory where variant genome subfolders are created.
+        verbosity (int): Verbosity level controlling printed progress information.
 
     Returns:
         Tuple[str,str]: A tuple containing the SNP output directory path and the
             INDEL output directory path, in that order.
     """
     # create snps and indels out directory
-    return create_folder(os.path.join(outdir, SNPDIR)), create_folder(
-        os.path.join(outdir, INDELSDIR)
+    snpsdir = create_folder(os.path.join(outdir, SNPDIR))
+    indelsdir = create_folder(os.path.join(outdir, INDELSDIR))
+    print_verbosity(
+        f"Output directories ready: {snpsdir}, {indelsdir}",
+        verbosity,
+        VERBOSITY_LVL[2],
     )
+    return snpsdir, indelsdir
 
 
 def _enrich_no_variants(
@@ -338,6 +496,12 @@ def _enrich_no_variants(
         verbosity (int): Verbosity level controlling printed progress information.
         debug (bool): Flag indicating whether to use debug-aware error handling.
     """
+    if contigs:
+        print_verbosity(
+            f"Copying {len(contigs)} contig(s) without variants",
+            verbosity,
+            VERBOSITY_LVL[1],
+        )
     for contig in contigs:  # just copy fasta without variants for enrichment
         print_verbosity(f"Enriching contig {contig}", verbosity, VERBOSITY_LVL[3])
         start = time()  # track enrichment running time
@@ -1263,11 +1427,23 @@ def _enrich_variants(
         )
         for contig in contigs
     ]
+    print_verbosity(
+        f"Enriching {len(tasks)} contig(s) with variants",
+        verbosity,
+        VERBOSITY_LVL[1],
+    )
     if threads == 1 or len(tasks) == 1:  # only one task to process
+        print_verbosity("Running serially", verbosity, VERBOSITY_LVL[3])
         for t in progress_bar(tasks, "Enriched contigs", verbosity):
             _enrich_variants_worker(t)
     else:  # use multiprocessing
-        with Pool(processes=set_processes(len(tasks), threads)) as pool:
+        workers = set_processes(len(tasks), threads)
+        print_verbosity(
+            f"Running in parallel across {workers} worker(s)",
+            verbosity,
+            VERBOSITY_LVL[3],
+        )
+        with Pool(processes=workers) as pool:
             with progress_bar_parallel(
                 len(tasks), "Enriched contigs", verbosity
             ) as pbar:
@@ -1310,7 +1486,12 @@ def _run_enrich_genome(
     """
     # retrieve contig to enrich with variants and those without variants associated
     contigs_vcf, contigs_wo_vcf = _split_contigs(fasta_vcf_map, verbosity)
-    snpsdir, indelsdir = _prepare_output_dir(outdir)  # prepare enrichment output folder
+    print_verbosity(
+        "Phase 1: copy variant-free contigs; Phase 2: enrich variant contigs",
+        verbosity,
+        VERBOSITY_LVL[3],
+    )
+    snpsdir, indelsdir = _prepare_output_dir(outdir, verbosity)  # prepare enrichment output folder
     # copy content of original fasta for contig without variants
     _enrich_no_variants(fasta_vcf_map, contigs_wo_vcf, snpsdir, verbosity, debug)
     # enrich contig fasta with vcf variants
@@ -1363,7 +1544,20 @@ def enrich_genome(
         debug (bool): Flag indicating whether to use debug-aware error handling.
     """
     # construct a fasta-vcf files map
+    print_verbosity(
+        f"enrich_genome: {len(fastas)} FASTA(s), {len(vcfs)} VCF(s), keep={keep}, "
+        f"indels={process_indels}, store_dictionary={store_dictionary}, "
+        f"threads={threads}, outdir={outdir!r}",
+        verbosity,
+        VERBOSITY_LVL[3],
+    )
     fasta_vcf_map = _construct_fasta_vcf_map(fastas, vcfs, verbosity, debug)
+    print_verbosity(
+        f"Mapped {len(fasta_vcf_map)} contig(s) from {len(fastas)} FASTA/"
+        f"{len(vcfs)} VCF input(s)",
+        verbosity,
+        VERBOSITY_LVL[2],
+    )
     print_verbosity("Enriching genome with input variants", verbosity, VERBOSITY_LVL[1])
     start = time()  # genome enrichment start point
     _run_enrich_genome(
@@ -1380,5 +1574,6 @@ def enrich_genome(
         f"Genome enrichment on {len(fasta_vcf_map)} contigs completed in "
         f"{time() - start:.2f}s",
         verbosity,
-        VERBOSITY_LVL[2],
+        VERBOSITY_LVL[1],
     )
+    

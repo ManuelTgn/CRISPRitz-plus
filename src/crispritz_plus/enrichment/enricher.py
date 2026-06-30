@@ -108,11 +108,11 @@ from ..exception_handlers import exception_handler
 from ..genome_io import GenomeReader, GenomeWriter, INDELOFFSET
 from ..progress import progress_bar, progress_bar_parallel
 from ..utils import create_folder, find_tabix_index, set_processes
+from ..variants import Snp, Snps, Indel, Indels, IndelsSet, IndelPair, IndelInfo
 from ..verbosity import VERBOSITY_LVL, print_verbosity
 
 from .crispritz_enrichment_error import CrispritzEnrichmentError
 from .enrichment_pair import EnrichPair
-from .variants import Snp, Snps, Indel, Indels, IndelsSet, IndelPair, IndelInfo
 
 
 # ==============================================================================

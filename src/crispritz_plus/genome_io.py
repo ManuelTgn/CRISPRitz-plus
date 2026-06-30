@@ -29,7 +29,7 @@ import os
 
 from .crispritz_errors import GenomeReaderError, GenomeWriterError
 from .exception_handlers import exception_handler
-from .enrichment.variants import IndelPair
+from .variants import IndelPair
 
 
 #: Number of reference bases retained both upstream and downstream of an

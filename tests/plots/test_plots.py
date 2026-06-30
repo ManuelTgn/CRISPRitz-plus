@@ -10,6 +10,7 @@ Covers pure-logic helpers and public API functions.  Rendering fidelity
 touch matplotlib only verify that a ``Figure`` is returned and files are
 written — not their pixel content.
 """
+
 from __future__ import annotations
 
 import os
@@ -54,6 +55,7 @@ from crispritz_plus.plots.crispritz_report_errors import CrispritzReportError
 # Module-level constants
 # ===========================================================================
 
+
 class TestConstants:
     def test_logo_alphabet_has_six_symbols(self):
         assert len(LOGO_ALPHABET) == 6
@@ -76,6 +78,7 @@ class TestConstants:
 # detect_annotation_columns
 # ===========================================================================
 
+
 class TestDetectAnnotationColumns:
     def test_no_extras_returns_empty(self):
         assert detect_annotation_columns(list(SEARCH_OUTPUT_HEADER)) == []
@@ -95,6 +98,7 @@ class TestDetectAnnotationColumns:
 # ===========================================================================
 # validate_annotated_tsv
 # ===========================================================================
+
 
 class TestValidateAnnotatedTsv:
     def test_valid_header_returns_annotation_cols(self):
@@ -117,6 +121,7 @@ class TestValidateAnnotatedTsv:
 # load_annotated_targets
 # ===========================================================================
 
+
 class TestLoadAnnotatedTargets:
     def test_valid_tsv_returns_dataframe(self, annotated_tsv):
         df = load_annotated_targets(annotated_tsv, debug=False)
@@ -133,7 +138,7 @@ class TestLoadAnnotatedTargets:
 
     def test_non_integer_mismatches_raises(self, tmp_path):
         header = "\t".join(list(SEARCH_OUTPUT_HEADER) + ["genes"])
-        row    = "chr1\t100\t+\tACGT\tACGT\tNOT_INT\tX\t0\t0\t1.0\tprom"
+        row = "chr1\t100\t+\tACGT\tACGT\tNOT_INT\tX\t0\t0\t1.0\tprom"
         p = tmp_path / "bad.tsv"
         p.write_text(f"{header}\n{row}\n")
         with pytest.raises(CrispritzReportError):
@@ -143,6 +148,7 @@ class TestLoadAnnotatedTargets:
 # ===========================================================================
 # _guide_key
 # ===========================================================================
+
 
 class TestGuideKey:
     def test_no_gaps_unchanged(self):
@@ -159,6 +165,7 @@ class TestGuideKey:
 # _safe_name
 # ===========================================================================
 
+
 class TestSafeName:
     def test_alphanumeric_unchanged(self):
         assert _safe_name("ACGT123") == "ACGT123"
@@ -167,7 +174,7 @@ class TestSafeName:
         assert _safe_name("AC GT!") == "AC_GT_"
 
     def test_empty_result_becomes_guide(self):
-        assert _safe_name("!@#") == "___"   # replaced; non-empty result
+        assert _safe_name("!@#") == "___"  # replaced; non-empty result
 
     def test_all_punctuation_returns_underscores_not_empty(self):
         result = _safe_name("--")
@@ -178,9 +185,10 @@ class TestSafeName:
 # _compute_frequency_matrix
 # ===========================================================================
 
+
 class TestComputeFrequencyMatrix:
     def test_output_shape(self):
-        grnas   = ["ACGT"]
+        grnas = ["ACGT"]
         spacers = ["ACGT"]
         m = _compute_frequency_matrix(grnas, spacers)
         assert m.shape == (4, len(LOGO_ALPHABET))
@@ -214,6 +222,7 @@ class TestComputeFrequencyMatrix:
 # _strip_pam
 # ===========================================================================
 
+
 class TestStripPam:
     def _matrix(self, n_rows: int) -> pd.DataFrame:
         return pd.DataFrame(
@@ -245,6 +254,7 @@ class TestStripPam:
 # build_offtarget_logo_matrix
 # ===========================================================================
 
+
 class TestBuildOfftargetLogoMatrix:
     def test_returns_dataframe_with_alphabet_columns(self, minimal_df):
         m = build_offtarget_logo_matrix(minimal_df, guide=None, strip_pam=False)
@@ -269,25 +279,26 @@ class TestBuildOfftargetLogoMatrix:
 # _initialize_annotation_counts
 # ===========================================================================
 
+
 class TestInitializeAnnotationCounts:
     def test_na_values_excluded(self):
         ann = ["promoter", "NA", "exon"]
-        mm  = [0, 0, 0]
-        fc  = _initialize_annotation_counts(ann, mm, max_mm=1)
+        mm = [0, 0, 0]
+        fc = _initialize_annotation_counts(ann, mm, max_mm=1)
         assert "NA" not in fc.counts
 
     def test_sites_above_max_mm_excluded(self):
         ann = ["promoter", "exon"]
-        mm  = [0, 2]
-        fc  = _initialize_annotation_counts(ann, mm, max_mm=1)
+        mm = [0, 2]
+        fc = _initialize_annotation_counts(ann, mm, max_mm=1)
         # exon is at mm=2 which is > max_mm=1 → excluded
         assert fc.counts.get("exon", 0) == 0
 
     def test_rare_features_below_threshold_excluded(self):
         # promoter appears 10×, rare appears 1× → rare below 10% threshold
         ann = ["promoter"] * 10 + ["rare"]
-        mm  = [0] * 11
-        fc  = _initialize_annotation_counts(ann, mm, max_mm=0)
+        mm = [0] * 11
+        fc = _initialize_annotation_counts(ann, mm, max_mm=0)
         assert "rare" not in fc.counts
         assert fc.counts["promoter"] == 10
 
@@ -299,6 +310,7 @@ class TestInitializeAnnotationCounts:
 # ===========================================================================
 # _initialize_radar_counts
 # ===========================================================================
+
 
 class TestInitializeRadarCounts:
     def test_keys_range_zero_to_max_mm(self):
@@ -318,6 +330,7 @@ class TestInitializeRadarCounts:
 # _save_and_close
 # ===========================================================================
 
+
 class TestSaveAndClose:
     def test_file_created_on_disk(self, tmp_path):
         fig, _ = plt.subplots()
@@ -335,11 +348,12 @@ class TestSaveAndClose:
 # plot_offtarget_logo  (rendering — just check return type)
 # ===========================================================================
 
+
 class TestPlotOfftargetLogo:
     def test_returns_figure(self, minimal_df):
         matrix = build_offtarget_logo_matrix(minimal_df, guide=None, strip_pam=False)
         fig = plot_offtarget_logo(matrix, title="test", debug=False)
-        assert hasattr(fig, "savefig")   # duck-type: it's a Figure
+        assert hasattr(fig, "savefig")  # duck-type: it's a Figure
         plt.close("all")
 
     def test_empty_matrix_raises(self):
@@ -351,6 +365,7 @@ class TestPlotOfftargetLogo:
 # ===========================================================================
 # plot_annotation_radar  (output-list contract)
 # ===========================================================================
+
 
 class TestPlotAnnotationRadar:
     def test_appends_one_path_per_mm_level(self, minimal_df, tmp_path):
@@ -367,7 +382,7 @@ class TestPlotAnnotationRadar:
         )
         # max_mm=1 → levels 0 and 1 → 2 files
         assert len(result) == 2
-        assert result is outputs   # same list object (mutated in place)
+        assert result is outputs  # same list object (mutated in place)
         plt.close("all")
 
     def test_output_files_exist(self, minimal_df, tmp_path):

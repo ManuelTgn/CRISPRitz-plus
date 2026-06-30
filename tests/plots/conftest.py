@@ -18,6 +18,7 @@ install that is not required for unit-testing the pure-logic paths in
 ``_plot_radar`` receive a ``MagicMock`` logo object and still exercise
 the matplotlib figure creation.
 """
+
 from __future__ import annotations
 
 import io
@@ -34,6 +35,7 @@ import pytest
 # Stubs
 # ---------------------------------------------------------------------------
 
+
 class CrispritzReportError(Exception):
     """Minimal stand-in; raises so pytest.raises() works."""
 
@@ -46,18 +48,21 @@ def _stub_eh(exc_type, msg, exit_code, debug, cause=None):
 # Paths
 # ---------------------------------------------------------------------------
 
-_CONF_DIR    = os.path.dirname(os.path.abspath(__file__))
+_CONF_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.abspath(os.path.join(_CONF_DIR, "..", ".."))
-_PKG_DIR     = os.path.join(_PROJECT_ROOT, "src", "crispritz_plus")
-_PLOTS_DIR   = os.path.join(_PKG_DIR, "plots")
+_PKG_DIR = os.path.join(_PROJECT_ROOT, "src", "crispritz_plus")
+_PLOTS_DIR = os.path.join(_PKG_DIR, "plots")
 
 
 # ---------------------------------------------------------------------------
 # Snapshot + inject
 # ---------------------------------------------------------------------------
 
-_SNAPSHOT: dict = {k: v for k, v in sys.modules.items()
-                   if k.startswith("crispritz_plus") or k == "logomaker"}
+_SNAPSHOT: dict = {
+    k: v
+    for k, v in sys.modules.items()
+    if k.startswith("crispritz_plus") or k == "logomaker"
+}
 
 
 def _install_stubs() -> None:
@@ -106,6 +111,7 @@ import crispritz_plus.plots.plots as _plots  # noqa: E402
 # Session teardown — restore sys.modules
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session", autouse=True)
 def _restore_modules():
     yield
@@ -119,6 +125,7 @@ def _restore_modules():
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def exc_cls():
     return CrispritzReportError
@@ -127,19 +134,21 @@ def exc_cls():
 @pytest.fixture
 def minimal_df() -> pd.DataFrame:
     """Annotated targets DataFrame: two rows, one mismatch, one annotation col."""
-    return pd.DataFrame({
-        "chrom":      ["chr1",     "chr1"],
-        "pos":        ["100",      "200"],
-        "strand":     ["+",        "+"],
-        "grna":       ["ACGTACGT", "ACGTACGT"],
-        "spacer":     ["ACGTACGT", "ATGTACGT"],  # row 1 has T mismatch at pos 1
-        "mismatches": [0,          1],
-        "bulge_type": ["X",        "X"],
-        "bulge_dna":  ["0",        "0"],
-        "bulge_rna":  ["0",        "0"],
-        "cfd_score":  ["1.0",      "0.8"],
-        "gene_track": ["promoter", "intron"],
-    })
+    return pd.DataFrame(
+        {
+            "chrom": ["chr1", "chr1"],
+            "pos": ["100", "200"],
+            "strand": ["+", "+"],
+            "grna": ["ACGTACGT", "ACGTACGT"],
+            "spacer": ["ACGTACGT", "ATGTACGT"],  # row 1 has T mismatch at pos 1
+            "mismatches": [0, 1],
+            "bulge_type": ["X", "X"],
+            "bulge_dna": ["0", "0"],
+            "bulge_rna": ["0", "0"],
+            "cfd_score": ["1.0", "0.8"],
+            "gene_track": ["promoter", "intron"],
+        }
+    )
 
 
 @pytest.fixture

@@ -108,11 +108,11 @@ from ..exception_handlers import exception_handler
 from ..genome_io import GenomeReader, GenomeWriter, INDELOFFSET
 from ..progress import progress_bar, progress_bar_parallel
 from ..utils import create_folder, find_tabix_index, set_processes
+from ..variants import Snp, Snps, Indel, Indels, IndelsSet, IndelPair, IndelInfo
 from ..verbosity import VERBOSITY_LVL, print_verbosity
 
 from .crispritz_enrichment_error import CrispritzEnrichmentError
 from .enrichment_pair import EnrichPair
-from .variants import Snp, Snps, Indel, Indels, IndelsSet, IndelPair, IndelInfo
 
 
 # ==============================================================================
@@ -484,8 +484,8 @@ def _split_contigs(
     print_verbosity(
         "Retrieving contigs with associated VCFs", verbosity, VERBOSITY_LVL[3]
     )
-    contigs_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf is not None]
-    contigs_wo_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf is None]
+    contigs_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf]
+    contigs_wo_vcf = [contig for contig, p in fasta_vcf_map.items() if not p.vcf]
     print_verbosity(
         f"Contigs with VCFs: {len(contigs_vcf)}, contigs without VCFs: {len(contigs_wo_vcf)}",
         verbosity,

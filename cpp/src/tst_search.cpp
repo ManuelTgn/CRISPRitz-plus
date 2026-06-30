@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 namespace crispritz {
 
@@ -680,6 +681,44 @@ TSTSearcher::search(const LoadedTST &tst, std::string_view guide_seq,
 
   std::vector<OffTarget> out;
   traverse(ctx, /*root index*/ 0, std::move(root), out, pam, pam_at_start);
+
+  // De-duplicate locus-identical emissions before returning.
+  //
+  // A single genomic site can be reached by multiple traversal paths that
+  // differ only in the ORDER of a bulge step and a lokid/hikid sibling
+  // descent (the two moves commute): an RNA bulge re-enters the same node,
+  // advancing the guide but not the tree, and re-runs the sibling descent,
+  // while descending the sibling first and taking the bulge there reaches the
+  // identical (node, guide_pos, alignment) state. Both yield byte-identical
+  // alignment strings and walk to the same leaf, so emit_leaf_chain pushes the
+  // same row twice. OffTarget equality is locus-only (chrom, pos, strand,
+  // target); collapsing on that key removes the exact duplicates while keeping
+  // genuinely distinct alignments at the same site. Stable: the first
+  // occurrence of each locus is retained. This also stops the same hit being
+  // counted twice by the per-guide ProfileAccumulator downstream.
+  if (out.size() > 1) {
+    std::unordered_set<std::string> seen;
+    seen.reserve(out.size() * 2);
+    std::vector<OffTarget> deduped;
+    deduped.reserve(out.size());
+    for (OffTarget &ot : out) {
+      std::string key;
+      key.reserve(ot.chrom().size() + ot.target().size() + 16u);
+      key.append(ot.chrom());
+      key.push_back('\0');
+      key.append(std::to_string(ot.pos()));
+      key.push_back('\0');
+      key.push_back(ot.strand() == Strand::Forward ? '+' : '-');
+      key.push_back('\0');
+      key.append(ot.grna());
+      key.push_back('\0');
+      key.append(ot.target());
+      if (seen.insert(std::move(key)).second)
+        deduped.push_back(std::move(ot));
+    }
+    out.swap(deduped);
+  }
+
   return out;
 }
 

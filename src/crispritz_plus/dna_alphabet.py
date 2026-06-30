@@ -1,10 +1,10 @@
 """
 DNA / IUPAC alphabet constants and sequence utilities for CRISPRitz-plus.
- 
+
 Centralises the nucleotide alphabets, the reverse-complement table, and the
 IUPAC degeneracy mappings used throughout the package, along with two small
 sequence-transformation helpers.
- 
+
 Module-level constants
 ----------------------
 DNA : List[str]
@@ -32,7 +32,7 @@ from itertools import permutations
 # ==============================================================================
 # Define DNA-related constant variables
 # ==============================================================================
- 
+
 #: Canonical DNA alphabet: the four bases plus the ``'N'`` ambiguity wildcard.
 DNA = ["A", "C", "G", "T", "N"]
 
@@ -114,28 +114,29 @@ IUPAC_ENCODER = {
 # Public API
 # ==============================================================================
 
+
 def reverse_complement(sequence: str) -> str:
     """Return the reverse complement of an IUPAC nucleotide sequence.
- 
+
     Reverses *sequence* and replaces each symbol with its complement from
     :data:`RC`.  Case is preserved because :data:`RC` contains both upper-
     and lower-case entries.
- 
+
     Parameters
     ----------
     sequence : str
         Nucleotide sequence containing only symbols present in :data:`RC`.
- 
+
     Returns
     -------
     str
         The reverse-complemented sequence.
- 
+
     Raises
     ------
     KeyError
         If *sequence* contains a character absent from :data:`RC`.
- 
+
     Examples
     --------
     >>> reverse_complement("ACGT")

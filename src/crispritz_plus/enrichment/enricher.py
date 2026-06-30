@@ -484,8 +484,8 @@ def _split_contigs(
     print_verbosity(
         "Retrieving contigs with associated VCFs", verbosity, VERBOSITY_LVL[3]
     )
-    contigs_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf is not None]
-    contigs_wo_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf is None]
+    contigs_vcf = [contig for contig, p in fasta_vcf_map.items() if p.vcf]
+    contigs_wo_vcf = [contig for contig, p in fasta_vcf_map.items() if not p.vcf]
     print_verbosity(
         f"Contigs with VCFs: {len(contigs_vcf)}, contigs without VCFs: {len(contigs_wo_vcf)}",
         verbosity,

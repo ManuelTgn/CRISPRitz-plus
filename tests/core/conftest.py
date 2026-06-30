@@ -11,22 +11,6 @@ if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
 
-# def _raising_eh(exc_type, msg, exit_code, debug, cause=None):
-#     raise exc_type(msg) from cause
-
-
-# @pytest.fixture(autouse=True)
-# def patch_exception_handler(monkeypatch):
-#     import crispritz_plus.exception_handlers as eh_mod
-#     monkeypatch.setattr(eh_mod, "exception_handler", _raising_eh)
-#     import crispritz_plus.genome_io      as _gio;  monkeypatch.setattr(_gio,  "exception_handler", _raising_eh)
-#     import crispritz_plus.pam            as _pam;  monkeypatch.setattr(_pam,  "exception_handler", _raising_eh)
-#     import crispritz_plus.guide          as _g;    monkeypatch.setattr(_g,    "exception_handler", _raising_eh)
-#     import crispritz_plus.search.tst_explorer as _ex; monkeypatch.setattr(_ex, "exception_handler", _raising_eh)
-#     import crispritz_plus.search.tst_manager  as _tm; monkeypatch.setattr(_tm, "exception_handler", _raising_eh)
-#     import crispritz_plus.enrichment.enricher as _en; monkeypatch.setattr(_en, "exception_handler", _raising_eh)
-
-
 # -------------------------------------------------------------------------
 # PAM files
 # -------------------------------------------------------------------------

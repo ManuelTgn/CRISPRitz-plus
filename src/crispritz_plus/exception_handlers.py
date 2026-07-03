@@ -1,4 +1,14 @@
-""" """
+"""Centralised error handling and signal handling for CRISPRitz-plus.
+
+Provides the two entry points every module uses to fail consistently:
+:func:`exception_handler`, which either re-raises with a full traceback (debug
+mode) or prints a coloured error and exits with a specific code, and
+:func:`sigint_handler`, which exits gracefully on keyboard interrupt.
+
+Routing all failures through :func:`exception_handler` keeps error formatting,
+exit codes, and the debug/production behaviour split identical across the
+whole package.
+"""
 
 from typing import Optional, NoReturn
 from colorama import init, Fore
@@ -8,10 +18,15 @@ import os
 
 
 def sigint_handler() -> None:
-    """Handle SIGINT (interrupt signal) to exit the program gracefully.
+    """Handle SIGINT (keyboard interrupt) by exiting gracefully.
 
-    Prints a message to standard error and exits the program with an OS error
-    code when SIGINT is received.
+    Writes a short notice to standard error and terminates the process with
+    :data:`os.EX_OSERR`.
+
+    Returns
+    -------
+    None
+        Does not return; the process exits.
     """
     # print message when SIGINT is caught to exit gracefully from the execution
     sys.stderr.write(f"\nCaught SIGINT. Exit CRISPRitz\n")
@@ -25,21 +40,32 @@ def exception_handler(
     debug: bool,
     e: Optional[Exception] = None,
 ) -> NoReturn:
-    """Handle exceptions by printing an error message and exiting the program.
+    """Raise or report an error, then exit, honouring debug mode.
 
-    Raises the specified exception with a formatted message in debug mode, or
-    prints an error and exits with the given code otherwise.
+    In debug mode the error is raised as *exception_type* with a full
+    traceback (chained from *e* when supplied), so the stack is preserved for
+    diagnosis.  Otherwise a red ``ERROR:`` line is written to standard error
+    and the process exits with *code*.
 
-    Args:
-        exception_type: The type of exception to raise.
-        exception: The error message to display.
-        code: The exit code to use when terminating the program.
-        debug: Flag to enable debug mode for full stack trace.
-        e: An optional previous exception to chain.
+    Parameters
+    ----------
+    exception_type : type
+        The exception class to raise in debug mode.
+    exception : str
+        The human-readable error message.
+    code : int
+        Process exit code used in non-debug mode (typically an ``os.EX_*``
+        constant).
+    debug : bool
+        When *True*, raise with a full traceback instead of exiting.
+    e : Optional[Exception], optional
+        A previous exception to chain from (``raise ... from e``).  Defaults
+        to ``None``.
 
-    Returns:
-        This function does not return; it exits the program or raises an
-            exception.
+    Returns
+    -------
+    NoReturn
+        Never returns normally: it either raises (debug) or exits the process.
     """
     init()  # initialize colorama render
     if debug:  # debug mode -> always trace back the full error stack

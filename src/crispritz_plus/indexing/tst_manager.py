@@ -1,15 +1,18 @@
 """ """
 
-from ..crispritz_errors import CrispritzTstError
-from ..exception_handlers import exception_handler
-from ..crispritz_cpp import build_tree_cpp
-from ..verbosity import VERBOSITY_LVL, print_verbosity
-from ..genome_io import GenomeReader
-from ..pam import PAM
-
+from time import time
 from typing import List
 
 import os
+
+
+from ..crispritz_cpp import build_tree_cpp
+from ..crispritz_errors import CrispritzTstError
+from ..exception_handlers import exception_handler
+from ..genome_io import GenomeReader
+from ..pam import PAM
+from ..progress import progress_bar
+from ..verbosity import VERBOSITY_LVL, print_verbosity
 
 
 def build_ternary_search_tree(
@@ -46,19 +49,32 @@ def build_ternary_search_tree(
         When *True*, exceptions propagate with full stack traces.
     """
     pam = PAM(pam_file, debug)
-    for fasta in fastas:
+    print_verbosity(
+        f"build_ternary_search_tree: pam={pam.pamseq}, pam_size={pam.size}, "
+        f"guide_size={pam.guide_size}, upstream={pam.upstream}, bmax={bmax}, "
+        f"threads={threads}, outdir={outdir!r}",
+        verbosity,
+        VERBOSITY_LVL[3],
+    )
+    print_verbosity(
+        f"Building genome index for {len(fastas)} FASTA file(s)",
+        verbosity,
+        VERBOSITY_LVL[1],
+    )
+    start = time()  # track total time
+    for i, fasta in enumerate(progress_bar(fastas, "Constructed TST indexes", verbosity), start=1):
         reader = GenomeReader(fasta, debug)
         reader.read()
         # the contig name is used in the output .bin filename(s).
         # Add leading 'chr' prefix to improve the legacy naming used by
         # (even though the search binary expects e.g. "1" not "chr1").
         contig = (
-            reader.header
-            if reader.header.startswith("chr")
-            else f"chr{reader.header}"
+            reader.header if reader.header.startswith("chr") else f"chr{reader.header}"
         )
         print_verbosity(
-            f"Building TST index for {contig} ({fasta})", verbosity, VERBOSITY_LVL[2]
+            f"[{i}/{len(fastas)}] Building TST index for {contig} ({fasta})",
+            verbosity,
+            VERBOSITY_LVL[2],
         )
         try:
             build_tree_cpp(
@@ -71,6 +87,7 @@ def build_ternary_search_tree(
                 outdir,
                 bmax,
                 threads,
+                verbosity,
             )
         except Exception as e:
             exception_handler(
@@ -80,3 +97,9 @@ def build_ternary_search_tree(
                 debug,
                 e,
             )
+    print_verbosity(
+        f"Genome index built for {len(fastas)} FASTA file(s) in "
+        f"{time() - start:.2f}s",
+        verbosity,
+        VERBOSITY_LVL[1],
+    )

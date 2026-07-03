@@ -52,6 +52,7 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
         py::arg("chr_name"), py::arg("pam_seq"), py::arg("pam_length"),
         py::arg("pam_limit"), py::arg("upstream"), py::arg("outdir"),
         py::arg("max_bulges") = 0, py::arg("num_threads") = 1,
+        py::arg("verbosity") = 1,
         "Build a Ternary Search Tree index for one genomic sequence and write "
         "the .bin partition(s) to outdir.");
 

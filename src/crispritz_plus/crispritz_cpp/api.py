@@ -23,6 +23,7 @@ def build_tree_cpp(
     outdir: str,
     max_bulges: int = 0,
     threads: int = 1,
+    verbosity: int = 1,
 ) -> None:
     """Call the C++ TST builder for a single chromosome sequence.
 
@@ -46,6 +47,9 @@ def build_tree_cpp(
         Maximum number of bulges allowed during index construction.
     threads: int
         Number of OpenMP threads for the PAM search phase.
+    verbosity: int
+        Output verbosity level forwarded to the C++ builder (0=Silent,
+        1=Normal, 2=Verbose, 3=Debug).
     """
     tst.build_tree(
         sequence,
@@ -57,6 +61,7 @@ def build_tree_cpp(
         outdir,
         max_bulges,
         threads,
+        verbosity,
     )
 
 

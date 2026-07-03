@@ -1,14 +1,15 @@
-"""Python wrapper over the C++ PartitionResult.
+"""Python wrapper over the C++ ``PartitionResult``.
 
-A PartitionResult is produced by the C++ search executor (one per partition);
-Python never builds one from scratch. This wrapper takes the native object and
-delegates its read-only fields, exposing the underlying object via
-:pyattr:`native` for the rare places that must hand the real type back across
-the pybind11 boundary (e.g. the profile-merge entry point, which consumes the
-native ``profiles``).
+A ``PartitionResult`` is produced by the C++ search executor (one per
+partition); Python never builds one from scratch.  This wrapper takes the
+native object and delegates its read-only fields, exposing the underlying
+object via :attr:`native` for the rare places that must hand the real type
+back across the pybind11 boundary (e.g. the profile-merge entry point, which
+consumes the native ``profiles``).
 """
 
 from typing import List
+
 
 from crispritz_plus import _ternary_search_tree as tst  # type: ignore
 
@@ -16,7 +17,16 @@ from .guide_profile import GuideProfile
 
 
 class PartitionResult:
-    """Outcome of searching a single partition: counts plus per-guide profiles."""
+    """Outcome of searching a single partition: counts plus per-guide profiles.
+
+    Wraps a native ``tst.PartitionResult`` and delegates its read-only fields.
+
+    Parameters
+    ----------
+    result : object
+        A native C++ ``PartitionResult`` or another ``PartitionResult``
+        wrapper; construction is idempotent (see :meth:`__init__`).
+    """
 
     __slots__ = ("_result",)
 
@@ -24,18 +34,18 @@ class PartitionResult:
         # Accept a native C++ PartitionResult or another PartitionResult wrapper.
         self._result = getattr(result, "native", result)
 
-    # ------------------------------------------------------------------
+    # ==========================================================================
     # Access to the wrapped C++ object
-    # ------------------------------------------------------------------
+    # ==========================================================================
 
     @property
     def native(self) -> "tst.PartitionResult":
         """The underlying C++ ``PartitionResult`` (for the binding boundary)."""
         return self._result
 
-    # ------------------------------------------------------------------
+    # ==========================================================================
     # Delegating read-only accessors
-    # ------------------------------------------------------------------
+    # ==========================================================================
 
     @property
     def source_path(self) -> str:

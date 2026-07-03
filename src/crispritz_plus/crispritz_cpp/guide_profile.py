@@ -1,24 +1,34 @@
-"""Python wrapper over the C++ GuideProfile.
+"""Python wrapper over the C++ ``GuideProfile``.
 
-A GuideProfile holds a guide's accumulated profiling statistics; it is produced
-C++-side (returned inside ``PartitionResult.profiles``) and consumed C++-side
-(passed back to the profile-merge entry point as an opaque value). This wrapper
-holds the native object, delegates the read-only fields exposed across the
-binding, and exposes the underlying object via :pyattr:`native` so it can be
-handed back across the boundary.
+A ``GuideProfile`` holds a guide's accumulated profiling statistics; it is
+produced C++-side (returned inside ``PartitionResult.profiles``) and consumed
+C++-side (passed back to the profile-merge entry point as an opaque value).
+This wrapper holds the native object, delegates the read-only fields exposed
+across the binding, and exposes the underlying object via :attr:`native` so it
+can be handed back across the boundary.
 
 Only the fields the binding surfaces (guide identity and on-target counts) are
 delegated; the full counter matrices stay C++-internal and are written by the
-ProfileWriter, never inspected from Python.
+``ProfileWriter``, never inspected from Python.
 """
 
 from typing import Union
+
 
 from crispritz_plus import _ternary_search_tree as tst  # type: ignore
 
 
 class GuideProfile:
-    """A single guide's profiling statistics (post-accumulation)."""
+    """A single guide's profiling statistics (post-accumulation).
+
+    Wraps a native ``tst.GuideProfile`` and delegates its read-only fields.
+
+    Parameters
+    ----------
+    profile : Union[tst.GuideProfile, GuideProfile]
+        A native C++ ``GuideProfile`` or another ``GuideProfile`` wrapper;
+        construction is idempotent (see :meth:`__init__`).
+    """
 
     __slots__ = ("_profile",)
 
@@ -28,18 +38,18 @@ class GuideProfile:
         # returns it unchanged; a wrapper yields its underlying native object.
         self._profile = getattr(profile, "native", profile)
 
-    # ------------------------------------------------------------------
+    # ==========================================================================
     # Access to the wrapped C++ object
-    # ------------------------------------------------------------------
+    # ==========================================================================
 
     @property
     def native(self) -> "tst.GuideProfile":
         """The underlying C++ ``GuideProfile`` (for the binding boundary)."""
         return self._profile
 
-    # ------------------------------------------------------------------
+    # ==========================================================================
     # Delegating read-only accessors
-    # ------------------------------------------------------------------
+    # ==========================================================================
 
     @property
     def guide(self) -> str:

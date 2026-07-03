@@ -12,6 +12,7 @@
 #include "output_writer.hpp" // OutputWriter, OutputWriter::Session
 #include "profile_data.hpp"  // ProfileAccumulator
 #include "tst_search.hpp"    // LoadedTST, TSTSearcher, load_partition
+#include "verbosity.hpp"     // print_verbosity
 
 #include <memory>
 #include <optional>
@@ -73,12 +74,21 @@ PartitionResult run_search_executor(const std::string &partition_path,
                                     const SearchConfiguration &config,
                                     const std::string &pam, bool pam_at_start,
                                     const std::string &shard_path,
-                                    BulgeMode bulge_mode) {
+                                    BulgeMode bulge_mode, int verbosity) {
   LoadedTST tst = load_partition(partition_path);
   TSTSearcher searcher(config);
 
   const bool want_targets = config.write_targets();
   const bool want_profile = config.write_profile();
+
+  // Per-partition tracing is DEBUG-only: run_search_executor runs GIL-released
+  // across the Python ThreadPoolExecutor, so any lower-level output would
+  // interleave nondeterministically across concurrent partitions.
+  print_verbosity("run_search_executor: '" + tst.source_path() + "' - " +
+                      std::to_string(guides.size()) +
+                      " guide(s), targets=" + (want_targets ? "1" : "0") +
+                      ", profile=" + (want_profile ? "1" : "0"),
+                  verbosity, VERBOSITY_DEBUG);
 
   // The motif travels as a string now (search() needs the bases to emit);
   // its length is the profile column geometry, so derive rather than duplicate.
@@ -139,6 +149,10 @@ PartitionResult run_search_executor(const std::string &partition_path,
     for (const ProfileAccumulator &acc : accumulators)
       result.profiles.push_back(acc.build());
   }
+
+  print_verbosity("Partition '" + result.source_path +
+                      "': " + std::to_string(result.total_hits) + " hit(s)",
+                  verbosity, VERBOSITY_DEBUG);
 
   return result;
 }

@@ -143,6 +143,11 @@ inline constexpr std::size_t SHARD_FLUSH_THRESHOLD = 100'000;
  *                       only when @c config.write_targets(); ignored otherwise.
  * @param bulge_mode     Whether one alignment may mix DNA+RNA bulges
  *                       (see @c BulgeMode).
+ * @param verbosity      Output verbosity (0=Silent,1=Normal,2=Verbose,3=Debug).
+ *                       Per-partition tracing is emitted at DEBUG only,
+ *                       because this runs GIL-released across the Python
+ *                       thread pool and lower-level output would interleave
+ *                       across partitions.
  *
  * @return A PartitionResult with per-guide profiles and counts.
  *
@@ -152,11 +157,10 @@ inline constexpr std::size_t SHARD_FLUSH_THRESHOLD = 100'000;
  *                               loaded guide length, or a guide length does
  *                               not match the index.
  */
-[[nodiscard]] PartitionResult
-run_search_executor(const std::string &partition_path, const std::string &chrom,
-                    const std::vector<std::string> &guides,
-                    const SearchConfiguration &config, const std::string &pam,
-                    bool pam_at_start, const std::string &shard_path,
-                    BulgeMode bulge_mode = BulgeMode::MixedBulges);
+[[nodiscard]] PartitionResult run_search_executor(
+    const std::string &partition_path, const std::string &chrom,
+    const std::vector<std::string> &guides, const SearchConfiguration &config,
+    const std::string &pam, bool pam_at_start, const std::string &shard_path,
+    BulgeMode bulge_mode = BulgeMode::MixedBulges, int verbosity = 1);
 
 } // namespace crispritz

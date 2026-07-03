@@ -45,6 +45,7 @@ namespace crispritz {
  *
  * @param by_partition  Per-partition, per-guide profiles.
  * @param path_stem     Shared path prefix for the five @c .xls files.
+ * @param verbosity     Output verbosity (0=Silent,1=Normal,2=Verbose,3=Debug).
  * @return Number of guides written.
  *
  * @throws std::invalid_argument on inconsistent inputs (see above).
@@ -52,6 +53,6 @@ namespace crispritz {
  */
 std::size_t write_merged_profiles(
     const std::vector<std::vector<GuideProfile>> &by_partition,
-    const std::string &path_stem);
+    const std::string &path_stem, int verbosity = 1);
 
 } // namespace crispritz

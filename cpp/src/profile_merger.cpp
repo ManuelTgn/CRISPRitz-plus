@@ -4,6 +4,7 @@
  */
 
 #include "profile_merger.hpp"
+#include "verbosity.hpp"
 
 #include "output_writer.hpp" // ProfileWriter
 
@@ -115,10 +116,14 @@ std::vector<GuideProfile> merge_guide_profiles(
 
 std::size_t write_merged_profiles(
     const std::vector<std::vector<GuideProfile>> &by_partition,
-    const std::string &path_stem) {
+    const std::string &path_stem, int verbosity) {
   const std::vector<GuideProfile> merged = merge_guide_profiles(by_partition);
   ProfileWriter writer;
   writer.write_all_profiles(merged, path_stem);
+  // Single-threaded finalization step; level-2 output is safe here.
+  print_verbosity("Wrote profiles for " + std::to_string(merged.size()) +
+                      " guide(s) to " + path_stem + ".profile*.xls",
+                  verbosity, VERBOSITY_VERBOSE);
   return merged.size();
 }
 

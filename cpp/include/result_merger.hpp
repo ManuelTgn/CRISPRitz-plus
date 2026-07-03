@@ -80,6 +80,7 @@ enum class SortMode : uint8_t {
  * @param mode         Ordering to apply.
  * @param write_header Emit one header line at the top of @p final_path.
  * @param remove_inputs Delete each shard file after a successful merge.
+ * @param verbosity   Output verbosity (0=Silent,1=Normal,2=Verbose,3=Debug).
  * @return Number of data rows written to @p final_path.
  *
  * @throws std::runtime_error if a shard or the output cannot be opened/written.
@@ -87,6 +88,6 @@ enum class SortMode : uint8_t {
 std::size_t merge_sorted_shards(const std::vector<std::string> &shard_paths,
                                 const std::string &final_path, SortMode mode,
                                 bool write_header = true,
-                                bool remove_inputs = true);
+                                bool remove_inputs = true, int verbosity = 1);
 
 } // namespace crispritz

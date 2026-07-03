@@ -4,6 +4,7 @@
  */
 
 #include "result_merger.hpp"
+#include "verbosity.hpp"
 
 #include <algorithm>
 #include <cstdio> // std::remove
@@ -228,8 +229,14 @@ SortMode sort_mode_from_string(std::string_view name) {
 
 std::size_t merge_sorted_shards(const std::vector<std::string> &shard_paths,
                                 const std::string &final_path, SortMode mode,
-                                bool write_header, bool remove_inputs) {
+                                bool write_header, bool remove_inputs,
+                                int verbosity) {
   // Phase 1: sort each shard in place (bounded to one shard in memory).
+  // This layer runs single-threaded (called once after the parallel search
+  // phase), so level-2/3 output here is safe from interleaving.
+  print_verbosity("merge_sorted_shards: sorting " +
+                      std::to_string(shard_paths.size()) + " shard(s)",
+                  verbosity, VERBOSITY_DEBUG);
   for (const std::string &path : shard_paths)
     sort_shard_file(path, mode);
 
@@ -295,6 +302,10 @@ std::size_t merge_sorted_shards(const std::vector<std::string> &shard_paths,
   if (remove_inputs)
     for (const std::string &path : shard_paths)
       std::remove(path.c_str());
+
+  print_verbosity("Merged " + std::to_string(written) + " row(s) from " +
+                      std::to_string(shard_paths.size()) + " shard(s)",
+                  verbosity, VERBOSITY_VERBOSE);
 
   return written;
 }

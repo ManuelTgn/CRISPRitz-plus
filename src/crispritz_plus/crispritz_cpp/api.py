@@ -23,6 +23,7 @@ def build_tree_cpp(
     outdir: str,
     max_bulges: int = 0,
     threads: int = 1,
+    verbosity: int = 1,
 ) -> None:
     """Call the C++ TST builder for a single chromosome sequence.
 
@@ -46,6 +47,9 @@ def build_tree_cpp(
         Maximum number of bulges allowed during index construction.
     threads: int
         Number of OpenMP threads for the PAM search phase.
+    verbosity: int
+        Output verbosity level forwarded to the C++ builder (0=Silent,
+        1=Normal, 2=Verbose, 3=Debug).
     """
     tst.build_tree(
         sequence,
@@ -57,6 +61,7 @@ def build_tree_cpp(
         outdir,
         max_bulges,
         threads,
+        verbosity,
     )
 
 
@@ -81,6 +86,7 @@ def run_search_executor_cpp(
     pam_at_start: bool,
     shard_path: str,
     bulge_mode: Union[str, BulgeMode] = "mixed",
+    verbosity: int = 1,
 ) -> PartitionResult:
     mode = (
         BulgeMode.from_string(bulge_mode) if isinstance(bulge_mode, str) else bulge_mode
@@ -94,6 +100,7 @@ def run_search_executor_cpp(
         pam_at_start,
         shard_path,
         mode,
+        verbosity,
     )
 
 
@@ -103,18 +110,21 @@ def merge_sorted_shards_cpp(
     sort_mode: Union[str, SortMode] = "edit_distance",
     write_header: bool = True,
     remove_inputs: bool = True,
+    verbosity: int = 1,
 ) -> int:
     mode = SortMode.from_string(sort_mode) if isinstance(sort_mode, str) else sort_mode
     return tst.merge_sorted_shards(
-        shard_paths, final_path, mode, write_header, remove_inputs
+        shard_paths, final_path, mode, write_header, remove_inputs, verbosity
     )
 
 
 def write_merged_profiles_cpp(
-    profiles_by_partition: List[List[GuideProfile]], path_stem: str
+    profiles_by_partition: List[List[GuideProfile]],
+    path_stem: str,
+    verbosity: int = 1,
 ) -> int:
     profiles_by_partition_native = [
         [getattr(profile, "native", profile) for profile in partition]
         for partition in profiles_by_partition
     ]
-    return tst.write_merged_profiles(profiles_by_partition_native, path_stem)
+    return tst.write_merged_profiles(profiles_by_partition_native, path_stem, verbosity)

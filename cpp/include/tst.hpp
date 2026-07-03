@@ -112,6 +112,9 @@ public:
    * @param max_bulges  Maximum number of bulges; extra bases extracted per
    *                    site to allow bulge-aware search later.
    * @param num_threads Number of OpenMP threads for PAM search.
+   * @param verbosity   Output verbosity level (0=Silent, 1=Normal, 2=Verbose,
+   *                    3=Debug); mirrors the Python-side VERBOSITY_LVL. All
+   *                    diagnostic output is gated through print_verbosity().
    *
    * @throws std::runtime_error if guide_length ≤ 0 or pam_limit ≤ 0 or
    *         outdir is empty.
@@ -119,7 +122,7 @@ public:
   TernarySearchTree(std::string_view sequence, std::string_view chr_name,
                     std::string_view pam_seq, int pam_length, int pam_limit,
                     bool pam_at_start, std::string_view outdir,
-                    int max_bulges = 0, int num_threads = 1);
+                    int max_bulges = 0, int num_threads = 1, int verbosity = 1);
 
   /**
    * @brief Run the full build pipeline:
@@ -173,6 +176,7 @@ private:
   std::string outdir_; ///< Output directory for .bin files.
   int max_bulges_;
   int num_threads_;
+  int verbosity_; ///< Output verbosity level (see verbosity.hpp)
 
   // ------------------------------------------------------------------
   // Build state (mutated by build() / save())
@@ -359,12 +363,13 @@ private:
  * @param outdir      Directory where .bin files will be written (must exist).
  * @param max_bulges  Maximum bulge count (default 0).
  * @param num_threads Number of threads for PAM search (default 1).
+ * @param verbosity   Output verbosity (0=Silent,1=Normal,2=Verbose,3=Debug).
  *
  * @throws std::runtime_error on any build or I/O failure.
  */
 void build_tree(const std::string &sequence, const std::string &chr_name,
                 const std::string &pam_seq, int pam_length, int pam_limit,
                 bool pam_at_start, const std::string &outdir,
-                int max_bulges = 0, int num_threads = 1);
+                int max_bulges = 0, int num_threads = 1, int verbosity = 1);
 
 } // namespace crispritz

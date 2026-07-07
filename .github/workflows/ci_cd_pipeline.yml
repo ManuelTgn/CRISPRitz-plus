@@ -1,0 +1,56 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  ci:
+    name: CI (Python ${{ matrix.python-version }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.8"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install build and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test] || pip install -r requirements.txt
+          pip install pytest pytest-cov black flake8 mypy
+
+      - name: Build extension
+        run: |
+          cmake -B build -S .
+          cmake --build build --config Release
+          # For a Python-native extension, use instead:
+          # python setup.py build_ext --inplace
+
+      - name: Run CTest
+        working-directory: build
+        run: ctest --output-on-failure
+
+      - name: Run Pytest with coverage
+        run: pytest --cov=. --cov-report=xml --cov-report=term-missing
+
+      - name: Check formatting with Black
+        run: black --check .
+
+      - name: Lint with Flake8
+        run: flake8 .
+
+      - name: Type-check with Mypy
+        run: mypy .

@@ -76,7 +76,9 @@ def build_ternary_search_tree(
         VERBOSITY_LVL[1],
     )
     start = time()  # track total time
-    for i, fasta in enumerate(progress_bar(fastas, "Constructed TST indexes", verbosity), start=1):
+    for i, fasta in enumerate(
+        progress_bar(fastas, "Constructed TST indexes", verbosity), start=1
+    ):
         reader = GenomeReader(fasta, debug)
         reader.read()
         # the contig name is used in the output .bin filename(s).

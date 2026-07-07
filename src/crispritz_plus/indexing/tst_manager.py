@@ -63,7 +63,20 @@ def build_ternary_search_tree(
         If the C++ builder fails on any input FASTA.
     """
     pam = PAM(pam_file, debug)
-    for fasta in fastas:
+    print_verbosity(
+        f"build_ternary_search_tree: pam={pam.pamseq}, pam_size={pam.size}, "
+        f"guide_size={pam.guide_size}, upstream={pam.upstream}, bmax={bmax}, "
+        f"threads={threads}, outdir={outdir!r}",
+        verbosity,
+        VERBOSITY_LVL[3],
+    )
+    print_verbosity(
+        f"Building genome index for {len(fastas)} FASTA file(s)",
+        verbosity,
+        VERBOSITY_LVL[1],
+    )
+    start = time()  # track total time
+    for i, fasta in enumerate(progress_bar(fastas, "Constructed TST indexes", verbosity), start=1):
         reader = GenomeReader(fasta, debug)
         reader.read()
         # the contig name is used in the output .bin filename(s).
@@ -73,7 +86,9 @@ def build_ternary_search_tree(
             reader.header if reader.header.startswith("chr") else f"chr{reader.header}"
         )
         print_verbosity(
-            f"Building TST index for {contig} ({fasta})", verbosity, VERBOSITY_LVL[2]
+            f"[{i}/{len(fastas)}] Building TST index for {contig} ({fasta})",
+            verbosity,
+            VERBOSITY_LVL[2],
         )
         try:
             build_tree_cpp(
@@ -86,6 +101,7 @@ def build_ternary_search_tree(
                 outdir,
                 bmax,
                 threads,
+                verbosity,
             )
         except Exception as e:
             exception_handler(
@@ -95,3 +111,9 @@ def build_ternary_search_tree(
                 debug,
                 e,
             )
+    print_verbosity(
+        f"Genome index built for {len(fastas)} FASTA file(s) in "
+        f"{time() - start:.2f}s",
+        verbosity,
+        VERBOSITY_LVL[1],
+    )

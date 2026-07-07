@@ -40,7 +40,7 @@ class DummyProgressBar:
 
 
 def progress_bar(iterable: Iterable, desc: str, verbosity: int) -> Iterable:
-    if verbosity in VERBOSITY_LVL[1:3]:
+    if verbosity in VERBOSITY_LVL[1:2]:
         return tqdm(
             iterable,
             desc=desc,
@@ -52,7 +52,7 @@ def progress_bar(iterable: Iterable, desc: str, verbosity: int) -> Iterable:
 
 @contextmanager
 def progress_bar_parallel(total: int, desc: str, verbosity: int):
-    if verbosity in VERBOSITY_LVL[1:3]:
+    if verbosity in VERBOSITY_LVL[1:2]:
         pbar = tqdm(
             total=total,
             desc=desc,

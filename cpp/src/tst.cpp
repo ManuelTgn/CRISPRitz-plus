@@ -1,6 +1,7 @@
 #include "tst.hpp"
 #include "pam_search.hpp"
 #include "tst_utils.hpp"
+#include "verbosity.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -24,12 +25,12 @@ TernarySearchTree::TernarySearchTree(std::string_view sequence,
                                      std::string_view pam_seq, int pam_length,
                                      int pam_limit, bool pam_at_start,
                                      std::string_view outdir, int max_bulges,
-                                     int num_threads)
+                                     int num_threads, int verbosity)
     : sequence_(sequence), chr_name_(chr_name), pam_seq_(pam_seq),
       pam_length_(pam_length), pam_limit_(pam_limit),
       guide_length_(pam_length - pam_limit), pam_at_start_(pam_at_start),
       outdir_(outdir), max_bulges_(max_bulges),
-      num_threads_(num_threads > 0 ? num_threads : 1) {
+      num_threads_(num_threads > 0 ? num_threads : 1), verbosity_(verbosity) {
   if (guide_length_ <= 0)
     throw std::runtime_error(
         "guide_length must be positive (pam_length > pam_limit required)");
@@ -45,6 +46,10 @@ TernarySearchTree::TernarySearchTree(std::string_view sequence,
 
 void TernarySearchTree::build() {
   // --- 1. PAM search ---------------------------------------------------
+  print_verbosity("build(): PAM search on '" + chr_name_ + "' (" +
+                      std::to_string(sequence_.size()) + " bp, " +
+                      std::to_string(num_threads_) + " thread(s))",
+                  verbosity_, VERBOSITY_DEBUG);
   pam::SearchParams params(pam_length_, pam_limit_, pam_at_start_,
                            num_threads_);
   pam::CompactGenome genome_bits(sequence_);
@@ -54,8 +59,14 @@ void TernarySearchTree::build() {
   // (Some chromosomes — e.g. decoy sequences — may genuinely contain no
   // sites; treat this as a no-op rather than an error so batch indexing
   // does not abort on a single empty contig.)
-  if (pam_sites.empty())
+  if (pam_sites.empty()) {
+    print_verbosity("No PAM sites on '" + chr_name_ + "'; skipping", verbosity_,
+                    VERBOSITY_VERBOSE);
     return;
+  }
+  print_verbosity("Found " + std::to_string(pam_sites.size()) +
+                      " PAM site(s) on '" + chr_name_ + "'",
+                  verbosity_, VERBOSITY_VERBOSE);
 
   // --- 2. Sequence extraction ------------------------------------------
   extract_sequences(pam_sites);
@@ -64,6 +75,9 @@ void TernarySearchTree::build() {
     throw std::runtime_error(
         "All PAM sites were discarded (contained N) for chromosome '" +
         chr_name_ + "'");
+  print_verbosity("Extracted " + std::to_string(leaves_.size()) +
+                      " leaf/leaves on '" + chr_name_ + "'",
+                  verbosity_, VERBOSITY_DEBUG);
 
   // --- 3. Lexicographic sort -------------------------------------------
   std::sort(leaves_.begin(), leaves_.end(),
@@ -219,64 +233,6 @@ int TernarySearchTree::alloc_node() {
     nodes_.emplace_back();
   return idx;
 }
-
-// void TernarySearchTree::insert(std::string_view guide_str, int leaf_idx,
-//                                int chunk_offset) {
-//   assert(!guide_str.empty());
-//   assert(nodes_used_ > 0 && "root must be allocated before first insert");
-
-//   const char *s = guide_str.data();
-//   const int encoded_leaf = -((leaf_idx - chunk_offset) + 1);
-
-//   int cur = 0; // start at root
-
-//   while (nodes_used_ > 0) {
-//     TSTNode &node = nodes_[cur];
-//     int d = static_cast<int>(static_cast<unsigned char>(*s)) -
-//             static_cast<int>(static_cast<unsigned char>(node.splitchar));
-
-//     if (d == 0) {
-//       ++s;
-//       if (*s == '\0') {
-//         leaves_[leaf_idx].next = node.eqkid;
-//         node.eqkid = encoded_leaf;
-//         return;
-//       }
-//       if (node.eqkid == 0) {
-//         node.eqkid = alloc_node();
-//         break;
-//       }
-//       cur = node.eqkid;
-//     } else if (d < 0) {
-//       if (node.lokid == 0) {
-//         node.lokid = alloc_node();
-//         break;
-//       }
-//       cur = node.lokid;
-//     } else {
-//       if (node.hikid == 0) {
-//         node.hikid = alloc_node();
-//         break;
-//       }
-//       cur = node.hikid;
-//     }
-//   }
-
-//   // Append new nodes for the remaining characters.
-//   while (true) {
-//     TSTNode &node = nodes_[cur];
-//     node.splitchar = *s;
-//     node.splitchar_enc = iupac::encode_genome(*s);
-
-//     ++s;
-//     if (*s == '\0') {
-//       node.eqkid = encoded_leaf;
-//       return;
-//     }
-//     node.eqkid = alloc_node();
-//     cur = node.eqkid;
-//   }
-// }
 
 void TernarySearchTree::insert(std::string_view guide_str, int leaf_idx,
                                int chunk_offset) {
@@ -480,14 +436,20 @@ void TernarySearchTree::write_partition(int part, int chunk_start,
   }
 
   out.close();
-  std::cout << "Written: " << filename << " (" << chunk_size << " leaves, "
-            << nodes_used_ << " nodes)\n";
+  print_verbosity("Written: " + filename + " (" + std::to_string(chunk_size) +
+                      " leaves, " + std::to_string(nodes_used_) + " nodes)",
+                  verbosity_, VERBOSITY_VERBOSE);
 }
 
 void TernarySearchTree::save() const {
   const int total = static_cast<int>(leaves_.size());
   const int groups = static_cast<int>(
       std::ceil(static_cast<double>(total) / LEAVES_PER_GROUP));
+
+  print_verbosity("Serializing " + std::to_string(total) +
+                      " leaf/leaves into " + std::to_string(groups) +
+                      " partition(s)",
+                  verbosity_, VERBOSITY_DEBUG);
 
   for (int g = 0; g < groups; ++g) {
     const int chunk_start = g * LEAVES_PER_GROUP;
@@ -518,9 +480,10 @@ void TernarySearchTree::save() const {
 void build_tree(const std::string &sequence, const std::string &chr_name,
                 const std::string &pam_seq, int pam_length, int pam_limit,
                 bool pam_at_start, const std::string &outdir, int max_bulges,
-                int num_threads) {
+                int num_threads, int verbosity) {
   TernarySearchTree tst(sequence, chr_name, pam_seq, pam_length, pam_limit,
-                        pam_at_start, outdir, max_bulges, num_threads);
+                        pam_at_start, outdir, max_bulges, num_threads,
+                        verbosity);
   tst.build();
 }
 

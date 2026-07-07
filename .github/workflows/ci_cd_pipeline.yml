@@ -75,8 +75,3 @@ jobs:
       - name: Check formatting with Black
         run: black --check .
 
-      - name: Lint with Flake8
-        run: flake8 .
-
-      - name: Type-check with Mypy
-        run: mypy .

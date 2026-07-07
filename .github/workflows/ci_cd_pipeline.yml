@@ -26,25 +26,51 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install build and test dependencies
+      # OpenMP is a hard requirement (find_package(OpenMP REQUIRED)) but Apple
+      # Clang does not ship it, so install libomp on macOS before configuring.
+      - name: Install OpenMP (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libomp
+
+      - name: Install build and test tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[test] || pip install -r requirements.txt
-          pip install pytest pytest-cov black flake8 mypy
+          # pybind11 is needed for the standalone CMake test build below;
+          # pytest-cov/black/flake8/mypy back the lint & coverage steps.
+          pip install pybind11 pytest pytest-cov black flake8 mypy
 
-      - name: Build extension
+      # Configure + build the C++ core and its CTest executables standalone.
+      # pybind11's CMake package lives in the pip install location, so point
+      # CMAKE_PREFIX_PATH at it; on macOS also hand CMake the libomp prefix.
+      - name: Build C++ extension and tests
         run: |
-          cmake -B build -S .
-          cmake --build build --config Release
-          # For a Python-native extension, use instead:
-          # python setup.py build_ext --inplace
+          CMAKE_EXTRA_ARGS=()
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            CMAKE_EXTRA_ARGS+=("-DOpenMP_ROOT=$(brew --prefix libomp)")
+          fi
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_PREFIX_PATH="$(python -m pybind11 --cmakedir)" \
+            "${CMAKE_EXTRA_ARGS[@]}"
+          cmake --build build --config Release -j
 
       - name: Run CTest
         working-directory: build
         run: ctest --output-on-failure
 
+      # Install the package so the compiled extension is importable for pytest.
+      # scikit-build-core rebuilds via CMake in an isolated env; forward the
+      # libomp location on macOS through CMAKE_ARGS.
+      - name: Install package
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export CMAKE_ARGS="-DOpenMP_ROOT=$(brew --prefix libomp)"
+          fi
+          pip install -e .
+
       - name: Run Pytest with coverage
-        run: pytest --cov=. --cov-report=xml --cov-report=term-missing
+        run: pytest --cov=crispritz_plus --cov-report=xml --cov-report=term-missing
 
       - name: Check formatting with Black
         run: black --check .

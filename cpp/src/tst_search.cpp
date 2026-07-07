@@ -8,8 +8,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 namespace crispritz {
 

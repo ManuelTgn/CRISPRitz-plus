@@ -52,6 +52,7 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
         py::arg("chr_name"), py::arg("pam_seq"), py::arg("pam_length"),
         py::arg("pam_limit"), py::arg("upstream"), py::arg("outdir"),
         py::arg("max_bulges") = 0, py::arg("num_threads") = 1,
+        py::arg("verbosity") = 1,
         "Build a Ternary Search Tree index for one genomic sequence and write "
         "the .bin partition(s) to outdir.");
 
@@ -153,7 +154,7 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
         py::arg("partition_path"), py::arg("chrom"), py::arg("guides"),
         py::arg("config"), py::arg("pam"), py::arg("pam_at_start"),
         py::arg("shard_path"), py::arg("bulge_mode") = BulgeMode::MixedBulges,
-        py::call_guard<py::gil_scoped_release>(),
+        py::arg("verbosity") = 1, py::call_guard<py::gil_scoped_release>(),
         "Load one .bin partition, search every guide, and stream the hits to a "
         "shard file (targets) and per-guide profiles. Returns a "
         "PartitionResult.");
@@ -165,7 +166,7 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
       "merge_sorted_shards", &crispritz::merge_sorted_shards,
       py::arg("shard_paths"), py::arg("final_path"), py::arg("sort_mode"),
       py::arg("write_header") = true, py::arg("remove_inputs") = true,
-      py::call_guard<py::gil_scoped_release>(),
+      py::arg("verbosity") = 1, py::call_guard<py::gil_scoped_release>(),
       "Sort each scored shard by sort_mode, then k-way merge into final_path. "
       "Returns the number of rows written.");
 
@@ -174,7 +175,7 @@ PYBIND11_MODULE(_ternary_search_tree, m) {
   // =========================================================================
   m.def("write_merged_profiles", &crispritz::write_merged_profiles,
         py::arg("profiles_by_partition"), py::arg("path_stem"),
-        py::call_guard<py::gil_scoped_release>(),
+        py::arg("verbosity") = 1, py::call_guard<py::gil_scoped_release>(),
         "Sum per-partition, per-guide profiles and write the five .xls profile "
         "files at path_stem. Returns the number of guides written.");
 }

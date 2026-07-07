@@ -99,6 +99,7 @@ target_include_directories(crispritz_core PUBLIC cpp/include)
 target_link_libraries(crispritz_core PUBLIC OpenMP::OpenMP_CXX)
 target_compile_options(crispritz_core PRIVATE ${CRISPRITZ_COMPILE_FLAGS})
 target_link_options(crispritz_core PRIVATE ${CRISPRITZ_LINK_FLAGS})
+set_target_properties(crispritz_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # <filesystem> requires an explicit link on GCC < 9 and some Clang versions.
 # Linking stdc++fs is harmless on compilers that bundle it into libstdc++.

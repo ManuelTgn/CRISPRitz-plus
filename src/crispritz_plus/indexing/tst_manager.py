@@ -1,6 +1,11 @@
-""" """
+"""Ternary Search Tree index construction for CRISPRitz-plus.
 
-from time import time
+Provides :func:`build_ternary_search_tree`, the Python orchestration layer for
+the ``index-genome`` stage.  It reads each per-chromosome FASTA, derives the
+contig name, and hands the sequence and PAM geometry to the C++ builder, which
+writes the nibble-packed ``.bin`` partition files that the search stage loads.
+"""
+
 from typing import List
 
 import os
@@ -11,7 +16,6 @@ from ..crispritz_errors import CrispritzTstError
 from ..exception_handlers import exception_handler
 from ..genome_io import GenomeReader
 from ..pam import PAM
-from ..progress import progress_bar
 from ..verbosity import VERBOSITY_LVL, print_verbosity
 
 
@@ -26,27 +30,37 @@ def build_ternary_search_tree(
 ) -> None:
     """Build a Ternary Search Tree index for every input FASTA file.
 
-    Reads each FASTA, extracts the chromosome name from the header, and
-    calls the C++ TST builder.  One or more ``.bin`` partition files are
-    written per chromosome into the current working directory.
+    Reads each FASTA, extracts the chromosome name from the header, and calls
+    the C++ TST builder.  One or more ``.bin`` partition files are written per
+    chromosome into *outdir*.
 
     Parameters
     ----------
-    fastas:
+    fastas : List[str]
         Paths to the per-chromosome FASTA files to index.
-    pam_file:
+    pam_file : str
         Path to the PAM specification file.
-    bmax:
+    bmax : int
         Maximum number of bulges; passed to the C++ builder so it extracts
         enough extra bases per site to support bulge-aware search.
-    outdir:
-        Path to the directory where the genome index will be stored.
-    threads:
+    outdir : str
+        Directory where the genome index will be stored.
+    threads : int
         Number of OpenMP threads for the PAM search phase.
-    verbosity:
-        Verbosity level (see ``VERBOSITY_LVL``).
-    debug:
+    verbosity : int
+        Verbosity level (see
+        :data:`~crispritz_plus.verbosity.VERBOSITY_LVL`).
+    debug : bool
         When *True*, exceptions propagate with full stack traces.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    CrispritzTstError
+        If the C++ builder fails on any input FASTA.
     """
     pam = PAM(pam_file, debug)
     print_verbosity(
@@ -62,7 +76,9 @@ def build_ternary_search_tree(
         VERBOSITY_LVL[1],
     )
     start = time()  # track total time
-    for i, fasta in enumerate(progress_bar(fastas, "Constructed TST indexes", verbosity), start=1):
+    for i, fasta in enumerate(
+        progress_bar(fastas, "Constructed TST indexes", verbosity), start=1
+    ):
         reader = GenomeReader(fasta, debug)
         reader.read()
         # the contig name is used in the output .bin filename(s).

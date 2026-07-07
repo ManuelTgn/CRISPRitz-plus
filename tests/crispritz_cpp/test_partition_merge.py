@@ -70,7 +70,9 @@ def test_fan_out_one_task_per_partition(tmp_path, monkeypatch, pam_file, guides_
     calls = []
     merged = {}
 
-    def fake_exec(partition, contig, guides, config, pam, upstream, shard, bulge_mode, verbosity):
+    def fake_exec(
+        partition, contig, guides, config, pam, upstream, shard, bulge_mode, verbosity
+    ):
         calls.append(contig)
         open(shard, "w").close()  # materialise the shard path
         return SimpleNamespace(

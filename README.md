@@ -1,4 +1,4 @@
-<!-- ![GitHub release](https://img.shields.io/github/v/release/ManuelTgn/CRISPRitz-plus) -->
+![GitHub release](https://img.shields.io/github/v/release/ManuelTgn/CRISPRitz-plus)
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
 ![Python](https://img.shields.io/badge/python-%E2%89%A53.8-blue?logo=python&logoColor=white)
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)

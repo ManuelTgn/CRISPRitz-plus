@@ -29,7 +29,7 @@ def sigint_handler() -> None:
         Does not return; the process exits.
     """
     # print message when SIGINT is caught to exit gracefully from the execution
-    sys.stderr.write(f"\nCaught SIGINT. Exit CRISPRitz\n")
+    sys.stderr.write(f"\nCaught SIGINT. Exit CRISPRitz+\n")
     sys.exit(os.EX_OSERR)  # mark as os error code
 
 

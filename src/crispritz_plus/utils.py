@@ -7,9 +7,9 @@ file rename / removal.  Also defines the tool naming and subcommand constants.
 Module-level constants
 ----------------------
 TOOLNAME : str
-    Display name of the tool (``"CRISPRitz"``).
+    Display name of the tool (``"CRISPRitz+"``).
 COMMAND : str
-    The console command used to invoke the tool (``"crispritz"``).
+    The console command used to invoke the tool (``"crispritz-plus"``).
 SUBCOMMANDS : List[str]
     The ordered list of CLI subcommands exposed by the tool.
 """
@@ -24,10 +24,10 @@ import os
 # ==============================================================================
 
 #: Human-facing display name of the tool.
-TOOLNAME = "CRISPRitz"
+TOOLNAME = "CRISPRitz+"
 
 #: Console command used to invoke the tool.
-COMMAND = "crispritz"
+COMMAND = "crispritz-plus"
 
 #: Ordered list of CLI subcommands exposed by the tool.
 SUBCOMMANDS = [

@@ -139,8 +139,8 @@ We’ll review your PR and provide feedback as soon as possible. Thank you for y
 
 Found a bug? Have a suggestion?
 
-1. Search the [existing issues](https://github.com/pinellolab/CRISPRitz-plus/issues).
-2. If it's new, [open a new issue](https://github.com/pinellolab/CRISPRitz-plus/issues/new) and include:
+1. Search the [existing issues](https://github.com/ManuelTgn/CRISPRitz-plus/issues).
+2. If it's new, [open a new issue](https://github.com/ManuelTgn/CRISPRitz-plus/issues/new) and include:
 
    * A clear description of the issue or request
    * Steps to reproduce (if applicable)

@@ -13,7 +13,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "crispritz-plus"
-version = "0.1.0"
+version = "0.1.1"
 description = "CRISPRitz+: High-Throughput and Variant-Aware In Silico Off-Target Sites Identification For CRISPR Genome Editing"
 readme = "README.md"
 authors = [
@@ -68,7 +68,8 @@ Changelog    = "https://github.com/ManuelTgn/CRISPRitz-plus/blob/main/CHANGELOG.
 build-dir = "build/{wheel_tag}"
 
 # Install the compiled extension into the Python package directory inside the wheel.
-wheel.install-dir = "src/crispritz_plus"
+wheel.install-dir = "crispritz_plus"
+wheel.packages    = ["src/crispritz_plus"]
 
 # Build the extension module AND all C++ test executables in one cmake --build pass.
 # _ternary_search_tree (the static library) is built implicitly as a dependency of all.

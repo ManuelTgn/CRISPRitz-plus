@@ -197,8 +197,8 @@ endif()  # BUILD_TESTING
 # ------------------------------------------------------------------------------
 # Install
 # ------------------------------------------------------------------------------
-set(PY_PACKAGE_DIR "${CMAKE_SOURCE_DIR}/src/crispritz_plus")
+# set(PY_PACKAGE_DIR "${CMAKE_SOURCE_DIR}/src/crispritz_plus")
 
 install(TARGETS _ternary_search_tree
-    LIBRARY DESTINATION ${PY_PACKAGE_DIR}
+    LIBRARY DESTINATION . # ${PY_PACKAGE_DIR}
 )

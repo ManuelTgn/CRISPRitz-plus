@@ -1,18 +1,18 @@
 """
-CRISPRitz {version}
+CRISPRitz+ {version}
 
 Copyright (C) 2026 Pinello Lab & InfOmics Lab <lpinello@mgh.harvard.edu> <rosalba.giugno@univr.it>
 
-CRISPRitz: High-Throughput and Variant-Aware In Silico Off-Target Sites Identification
+CRISPRitz+: High-Throughput and Variant-Aware In Silico Off-Target Sites Identification
 For CRISPR Genome Editing
 
-CRISPRitz is a software package containing five tools to perform variant-aware
+CRISPRitz+ is a software package containing five tools to perform variant-aware
 off-target prediction and result assessement on CRISPR/Cas experiments.
 
 Usage:
-    crispritz add-variants <options>
+    crispritz-plus add-variants <options>
 
-Run 'crispritz -h/--help' to display the complete help
+Run 'crispritz-plus -h/--help' to display the complete help
 """
 
 from argparse import _SubParsersAction
@@ -89,8 +89,8 @@ def _create_enrichment_parser(subparser: _SubParsersAction) -> _SubParsersAction
     """
     parser_enrichment = subparser.add_parser(
         SUBCOMMANDS[0],
-        usage="CRISPRitz add-variants {version}\n\nUsage:\n"
-        "\tcrispritz add-variants --vcf <vcf> --genome <fasta>\n\n",
+        usage="CRISPRitz+ add-variants {version}\n\nUsage:\n"
+        "\tcrispritz-plus add-variants --vcf <vcf> --genome <fasta>\n\n",
         description="Genome enrichment pipeline: parses input VCF files to "
         "integrate sequence variants (SNPs and indels) into the reference FASTA "
         "files",
@@ -190,8 +190,8 @@ def _create_enrichment_parser(subparser: _SubParsersAction) -> _SubParsersAction
 def _create_indexing_parser(subparser: _SubParsersAction) -> _SubParsersAction:
     parser_indexing = subparser.add_parser(
         SUBCOMMANDS[1],
-        usage="CRISPRitz index-genome {version}\n\nUsage:\n"
-        "\tcrispritz index-genome --genome <genome-dir> --genome-name "
+        usage="CRISPRitz+ index-genome {version}\n\nUsage:\n"
+        "\tcrispritz-plus index-genome --genome <genome-dir> --genome-name "
         "<genome-name> --pam <pam-file>\n\n",
         description="Create a genome TST index for fast (optionally bulge-aware) "
         "off-target candidate searches.",
@@ -306,8 +306,8 @@ def _create_search_parser(subparser: _SubParsersAction) -> _SubParsersAction:
     """
     parser_search = subparser.add_parser(
         SUBCOMMANDS[2],
-        usage="CRISPRitz search {version}\n\nUsage:\n"
-        "\tcrispritz search --index-genome <index-genome-dir> --pam <pam-file> "
+        usage="CRISPRitz+ search {version}\n\nUsage:\n"
+        "\tcrispritz-plus search --index-genome <index-genome-dir> --pam <pam-file> "
         "--guides <guides-file> --mm <mismatches> [--bdna <n>] [--brna <n>] "
         "[--output-mode <targets|profile|both>] "
         "[--output-format <tsv|targets>] [--outdir <dir>] [--threads <n>]\n\n",
@@ -484,8 +484,8 @@ def _create_annotation_parser(subparser: _SubParsersAction) -> _SubParsersAction
     """
     parser_annotate = subparser.add_parser(
         SUBCOMMANDS[3],
-        usage="CRISPRitz annotate-results {version}\n\nUsage:\n"
-        "\tcrispritz annotate-results --targets <targets-file> "
+        usage="CRISPRitz+ annotate-results {version}\n\nUsage:\n"
+        "\tcrispritz-plus annotate-results --targets <targets-file> "
         "--annotations <bed> [<bed> ...] "
         "[--annotation-names <name> [<name> ...]] [--outdir <dir>] "
         "[--threads <n>]\n\n",
@@ -587,8 +587,8 @@ def _create_report_parser(subparser: _SubParsersAction) -> _SubParsersAction:
     """Create and configure the argument parser for the generate-report subcommand."""
     parser_report = subparser.add_parser(
         SUBCOMMANDS[4],
-        usage="CRISPRitz generate-report {version}\n\nUsage:\n"
-        "\tcrispritz generate-report --input <annotated-tsv> [--mm <n>] "
+        usage="CRISPRitz+ generate-report {version}\n\nUsage:\n"
+        "\tcrispritz-plus generate-report --input <annotated-tsv> [--mm <n>] "
         "[--guide <guide>] [--prefix <name>] [--outdir <dir>]\n\n",
         description="Generate graphical reports from an annotated targets TSV: a "
         "LogoMaker off-target profile (bulge-aware) per guide and a radar chart "

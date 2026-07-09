@@ -13,7 +13,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "crispritz-plus"
-version = "0.1.0"
+version = "0.1.1"
 description = "CRISPRitz+: High-Throughput and Variant-Aware In Silico Off-Target Sites Identification For CRISPR Genome Editing"
 readme = "README.md"
 authors = [

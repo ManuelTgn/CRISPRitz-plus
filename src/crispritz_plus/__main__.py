@@ -90,7 +90,7 @@ def _create_enrichment_parser(subparser: _SubParsersAction) -> _SubParsersAction
     parser_enrichment = subparser.add_parser(
         SUBCOMMANDS[0],
         usage="CRISPRitz+ add-variants {version}\n\nUsage:\n"
-        "\tcrispritz add-variants --vcf <vcf> --genome <fasta>\n\n",
+        "\tcrispritz-plus add-variants --vcf <vcf> --genome <fasta>\n\n",
         description="Genome enrichment pipeline: parses input VCF files to "
         "integrate sequence variants (SNPs and indels) into the reference FASTA "
         "files",
@@ -190,7 +190,7 @@ def _create_enrichment_parser(subparser: _SubParsersAction) -> _SubParsersAction
 def _create_indexing_parser(subparser: _SubParsersAction) -> _SubParsersAction:
     parser_indexing = subparser.add_parser(
         SUBCOMMANDS[1],
-        usage="CRISPRitz index-genome {version}\n\nUsage:\n"
+        usage="CRISPRitz+ index-genome {version}\n\nUsage:\n"
         "\tcrispritz-plus index-genome --genome <genome-dir> --genome-name "
         "<genome-name> --pam <pam-file>\n\n",
         description="Create a genome TST index for fast (optionally bulge-aware) "
